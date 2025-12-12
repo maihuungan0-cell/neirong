@@ -86,7 +86,7 @@ const App = () => {
         **Task Definition:**
         1. Topic: "${topic}".
         2. Context: "${context || "Focus on practical skills, safety tips, or efficiency."}".
-        3. **GOAL**: Generate **4 (FOUR)** distinct, independent articles on this topic from different angles.
+        3. **GOAL**: Generate **4 (FOUR)** distinct articles.
         
         **Structure for EACH Article:**
         1.  **Opening**: Hook the reader.
@@ -97,17 +97,18 @@ const App = () => {
         **Output Format Requirements (STRICT):**
         - Separator: Use "---POST_DIVIDER---" between articles.
         - Tags: Use exactly $$$TITLE$$$, $$$ANGLE$$$, $$$IMAGE_KEYWORD$$$, $$$CONTENT$$$.
-        - **DO NOT** put the tags inside the content block.
+        - **IMPORTANT**: Do not wrap tags in bold (e.g., no **$$$TITLE$$$**). Just plain text tags.
+        - **IMPORTANT**: Do not use brackets around the content (e.g., no [My Title]).
         - **DO NOT** translate the tags.
 
         **Example Output Template:**
-        $$$TITLE$$$ [Title 1]
-        $$$ANGLE$$$ [Angle 1]
-        $$$IMAGE_KEYWORD$$$ [English Keyword]
+        $$$TITLE$$$ Title 1
+        $$$ANGLE$$$ Angle 1
+        $$$IMAGE_KEYWORD$$$ English Keyword
         $$$CONTENT$$$
-        [Content for article 1...]
+        Content for article 1...
         ---POST_DIVIDER---
-        $$$TITLE$$$ [Title 2]
+        $$$TITLE$$$ Title 2
         ...
       `;
 
@@ -152,11 +153,11 @@ const App = () => {
         **Format Requirement**: DO NOT TRANSLATE TAGS. Use $$$TITLE$$$, $$$CONTENT$$$ etc.
         
         **Output Format**:
-        $$$TITLE$$$ [New Title]
-        $$$ANGLE$$$ [New Style Label]
-        $$$IMAGE_KEYWORD$$$ [New English Keyword]
+        $$$TITLE$$$ New Title
+        $$$ANGLE$$$ New Style Label
+        $$$IMAGE_KEYWORD$$$ New English Keyword
         $$$CONTENT$$$
-        [New Content]
+        New Content
       `;
 
       const text = await callServerApi(systemPrompt, userPrompt);
@@ -183,45 +184,68 @@ const App = () => {
     const cleanText = text.replace(/```/g, ''); 
     
     // Split by separator OR just "---" on a new line (in case model hallucinates format)
-    // The regex matches:
-    // 1. "---POST_DIVIDER---"
-    // 2. OR a line that contains only "---" or "***"
     const rawPosts = cleanText
       .split(/(?:---POST_DIVIDER---|(?:\r?\n|^)\s*[-*]{3,}\s*(?:\r?\n|$))/i)
-      .filter(p => p.trim().length > 50); // Filter out empty or too short chunks
+      .filter(p => p.trim().length > 50); 
     
     return rawPosts.map((raw) => {
-      const titleMatch = raw.match(/\$\$\$(?:TITLE|标题)\$\$\$[:：]?\s*(.+)/i);
-      const angleMatch = raw.match(/\$\$\$(?:ANGLE|角度)\$\$\$[:：]?\s*(.+)/i);
-      const imageMatch = raw.match(/\$\$\$(?:IMAGE_KEYWORD|图片关键词)\$\$\$[:：]?\s*(.+)/i);
+      // Helper: Extract with multiple fallbacks
+      // Handles: $$$TITLE$$$ Value, **$$$TITLE$$$**: Value, Title: Value, 标题: Value
+      const extract = (tag: string, fallbackPrefixes: string[]) => {
+        // 1. Try strict tag with lenient formatting (allows bold, colons, brackets around value)
+        const tagRegex = new RegExp(`\\$\\$\\$${tag}\\$\\$\\$[\\*\\s:：]*(?:\\[)?(.*?)(?:\\])?(?:\\r?\\n|$)`, 'i');
+        const tagMatch = raw.match(tagRegex);
+        if (tagMatch && tagMatch[1].trim()) return tagMatch[1].trim();
+
+        // 2. Try Fallbacks: e.g. "Title: Value" or "标题: Value"
+        for (const prefix of fallbackPrefixes) {
+           const fallbackRegex = new RegExp(`(?:^|\\n)[\\*\\s]*${prefix}[:：]\\s*(?:\\[)?(.*?)(?:\\])?(?:\\r?\\n|$)`, 'i');
+           const match = raw.match(fallbackRegex);
+           if (match && match[1].trim()) return match[1].trim();
+        }
+        return null;
+      };
+
+      const title = extract('TITLE', ['Title', '标题']) || "未命名标题";
+      const angle = extract('ANGLE', ['Angle', '角度', 'Direction']) || "实用干货";
+      const imageKeyword = extract('IMAGE_KEYWORD', ['Image Keyword', 'Image', 'Key', '图片关键词']) || "office";
       
-      // Determine content. 
-      // Strategy: Split by Content tag. If fails, try to strip metadata from top.
+      // Content Extraction
+      // Strategy: Look for $$$CONTENT$$$. If not found, strip header lines.
       let contentBody = "";
-      const contentSplit = raw.split(/\$\$\$(?:CONTENT|内容)\$\$\$[:：]?/i);
+      const contentTagMatch = raw.match(/\$\$\$CONTENT\$\$\$[:：]?/i);
       
-      if (contentSplit.length > 1) {
-        contentBody = contentSplit[1];
+      if (contentTagMatch) {
+         // content is everything after the tag
+         const index = contentTagMatch.index! + contentTagMatch[0].length;
+         contentBody = raw.substring(index);
       } else {
-        // Fallback: Manually remove metadata lines
-        contentBody = raw;
+        // Fallback: Remove lines that look like metadata
+        contentBody = raw
+          .replace(new RegExp(`\\$\\$\\$TITLE\\$\\$\\$.*`, 'gi'), '')
+          .replace(new RegExp(`Title:.*`, 'gi'), '')
+          .replace(new RegExp(`标题:.*`, 'gi'), '')
+          .replace(new RegExp(`\\$\\$\\$ANGLE\\$\\$\\$.*`, 'gi'), '')
+          .replace(new RegExp(`Angle:.*`, 'gi'), '')
+          .replace(new RegExp(`角度:.*`, 'gi'), '')
+          .replace(new RegExp(`\\$\\$\\$IMAGE_KEYWORD\\$\\$\\$.*`, 'gi'), '')
+          .replace(new RegExp(`Image Keyword:.*`, 'gi'), '')
+          .replace(new RegExp(`图片关键词:.*`, 'gi'), '')
+          .trim();
       }
 
-      // AGGRESSIVE CLEANUP: Remove any lines that start with $$$
-      // This fixes the issue where the user sees raw tags in the card.
+      // Final cleanup
       contentBody = contentBody
         .split('\n')
-        .filter(line => !line.trim().startsWith('$$$'))
+        .filter(line => !line.trim().startsWith('$$$')) // Remove stray tags
         .join('\n')
+        .replace(/\*\*/g, "") // Remove bolding for cleaner look
         .trim();
 
-      // Final cleanup of markdown bolding
-      contentBody = contentBody.replace(/\*\*/g, "").replace(/\*/g, "");
-
       return {
-        title: titleMatch ? titleMatch[1].trim() : "未命名标题",
-        angle: angleMatch ? angleMatch[1].trim() : "实用干货",
-        imageKeyword: imageMatch ? imageMatch[1].trim() : "office",
+        title,
+        angle,
+        imageKeyword,
         content: contentBody
       };
     });
