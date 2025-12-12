@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
+import { GoogleGenAI } from "@google/genai";
 import { LucideSparkles, LucideCopy, LucideSearch, LucideBookOpen, LucideSend, LucideLoader2, LucideWand2, LucideX, LucideImage, LucideExternalLink, LucideMaximize2, LucideMinimize2, LucideAlignJustify } from "lucide-react";
 
 // --- Types ---
@@ -27,179 +28,24 @@ const REWRITE_PRESETS = [
   "温柔邻家"
 ];
 
-// --- Tencent Cloud API Helpers (Browser Compatible) ---
-// 实现腾讯云 V3 签名算法
-async function sha256Hex(str: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
+// --- Google Gemini API Helper ---
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-async function hmac(key: Uint8Array | string, msg: string): Promise<Uint8Array> {
-  const encoder = new TextEncoder();
-  const keyData = typeof key === 'string' ? encoder.encode(key) : key;
-  const msgData = encoder.encode(msg);
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-  );
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
-  return new Uint8Array(signature);
-}
-
-async function callTencentHunyuan(systemPrompt: string, userPrompt: string) {
-  // 辅助函数：尝试读取不同前缀的环境变量
-  const getEnvVar = (key: string) => {
-    if (typeof process !== 'undefined' && process.env) {
-      return process.env[key] || 
-             process.env[`NEXT_PUBLIC_${key}`] || 
-             process.env[`VITE_${key}`] || 
-             process.env[`REACT_APP_${key}`];
-    }
-    return undefined;
-  };
-
-  // 1. 尝试从环境变量读取
-  const envId = getEnvVar('TENCENT_SECRET_ID');
-  const envKey = getEnvVar('TENCENT_SECRET_KEY');
-
-  // 2. 兜底 Key (注意：生产环境请务必使用后端转发，不要暴露 Key)
-  const secretId = envId || "AKIDWzLftR9nMsUahwCPUREuushXI8qPvJfs";
-  const secretKey = envKey || "7X0R1kaZTFA0jhnmdLakniUB6wc7VwFR";
-  
-  if (!secretId || !secretKey) {
-    throw new Error("Missing Tencent Cloud Credentials. Please check your keys.");
-  }
-
-  const endpoint = "hunyuan.tencentcloudapi.com";
-  const service = "hunyuan";
-  const region = ""; 
-  const action = "ChatCompletions";
-  const version = "2023-09-01";
-  
-  // Construct Payload
-  const payload = {
-    Model: "hunyuan-standard", 
-    Messages: [
-      { Role: "system", Content: systemPrompt },
-      { Role: "user", Content: userPrompt }
-    ],
-    Temperature: 0.7
-  };
-  const payloadStr = JSON.stringify(payload);
-
-  // 1. Timestamp variables
-  const now = new Date();
-  const timestamp = Math.floor(now.getTime() / 1000);
-  const date = now.toISOString().slice(0, 10); // YYYY-MM-DD
-
-  // 2. Canonical Request
-  const httpRequestMethod = "POST";
-  const canonicalUri = "/";
-  const canonicalQueryString = "";
-  
-  // Critical: 只签名 content-type，不签名 Host。
-  // 这样无论请求是发给 Proxy 还是直接发给腾讯云，签名都是有效的。
-  const canonicalHeaders = "content-type:application/json\n";
-  const signedHeaders = "content-type";
-  
-  const hashedRequestPayload = await sha256Hex(payloadStr);
-  const canonicalRequest = `${httpRequestMethod}\n${canonicalUri}\n${canonicalQueryString}\n${canonicalHeaders}\n${signedHeaders}\n${hashedRequestPayload}`;
-
-  // 3. String to Sign
-  const algorithm = "TC3-HMAC-SHA256";
-  const credentialScope = `${date}/${service}/tc3_request`;
-  const hashedCanonicalRequest = await sha256Hex(canonicalRequest);
-  const stringToSign = `${algorithm}\n${timestamp}\n${credentialScope}\n${hashedCanonicalRequest}`;
-
-  // 4. Calculate Signature
-  const kSecret = "TC3" + secretKey;
-  const kDate = await hmac(kSecret, date);
-  const kService = await hmac(kDate, service);
-  const kSigning = await hmac(kService, "tc3_request");
-  const signatureRaw = await hmac(kSigning, stringToSign);
-  const signatureHex = Array.from(signatureRaw).map(b => b.toString(16).padStart(2, '0')).join('');
-
-  // 5. Authorization Header
-  const authorization = `${algorithm} Credential=${secretId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
-
-  // Headers object
-  const headers = {
-    "Content-Type": "application/json",
-    "Authorization": authorization,
-    "X-TC-Action": action,
-    "X-TC-Version": version,
-    "X-TC-Timestamp": timestamp.toString(),
-  };
-
-  // --- 双重请求策略 ---
-  // 策略 A: 尝试使用 CORS Proxy (默认)
+async function callGemini(systemPrompt: string, userPrompt: string) {
   try {
-    const proxyUrl = "https://corsproxy.io/?";
-    // 编码目标 URL，防止特殊字符导致代理解析错误
-    const targetUrl = encodeURIComponent(`https://${endpoint}`);
-    
-    const response = await fetch(`${proxyUrl}${targetUrl}`, {
-      method: "POST",
-      headers,
-      body: payloadStr
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      config: {
+        systemInstruction: systemPrompt,
+        temperature: 0.7,
+      },
+      contents: userPrompt,
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      // 如果是鉴权错误(401/403)，大概率是 Key 有问题，代理是通的，直接抛出
-      if (response.status === 401 || response.status === 403) {
-         throw new Error(`Tencent API Auth Error (${response.status}): ${errText}`);
-      }
-      // 其他错误(如500)可能是代理问题，抛出错误以触发 Catch 进入降级策略
-      throw new Error(`Proxy Request Failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-    if (data.Response.Error) {
-      throw new Error(`Tencent API Error: ${data.Response.Error.Message}`);
-    }
-    return data.Response.Choices?.[0]?.Message?.Content || "";
-
-  } catch (proxyError: any) {
-    console.warn("Proxy attempt failed, falling back to direct connection...", proxyError);
-    
-    // 如果是鉴权错误，不需要重试，直接抛出
-    if (proxyError.message && proxyError.message.includes("Auth Error")) {
-      throw proxyError;
-    }
-
-    // 策略 B: 尝试直连 (用户可能安装了 Allow CORS 插件)
-    try {
-      const response = await fetch(`https://${endpoint}`, {
-        method: "POST",
-        headers,
-        body: payloadStr
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Direct Request Error (${response.status}): ${errText}`);
-      }
-
-      const data = await response.json();
-      if (data.Response.Error) {
-        throw new Error(`Tencent API Error: ${data.Response.Error.Message}`);
-      }
-      return data.Response.Choices?.[0]?.Message?.Content || "";
-
-    } catch (directError: any) {
-      // 两个策略都失败了，给出详细指导
-      let errorMessage = "网络请求失败 (Failed to fetch)。\n\n";
-      errorMessage += "原因：浏览器阻止了跨域请求 (CORS)，且公共代理暂时不可用。\n\n";
-      errorMessage += "解决方案 (二选一)：\n";
-      errorMessage += "1. 安装 'Allow CORS: Access-Control-Allow-Origin' 浏览器插件并开启 (推荐本地测试使用)。\n";
-      errorMessage += "2. 检查您的网络是否屏蔽了 corsproxy.io。\n";
-      
-      throw new Error(errorMessage);
-    }
+    return response.text || "";
+  } catch (error: any) {
+    console.error("Gemini API Error:", error);
+    throw new Error(error.message || "AI 生成服务暂时不可用");
   }
 }
 
@@ -261,13 +107,10 @@ const App = () => {
         ---POST_DIVIDER---
       `;
 
-      // Call Tencent API
-      const text = await callTencentHunyuan(systemPrompt, userPrompt);
+      // Call Gemini API
+      const text = await callGemini(systemPrompt, userPrompt);
 
-      // Note: Hunyuan does not return grounding chunks in standard chat response easily like Gemini
-      // So sources will be empty unless we parse them from text if the model includes links.
       setSources([]);
-
       const parsed = parseResponse(text);
       setPosts(parsed);
 
@@ -322,7 +165,7 @@ const App = () => {
         [New Content]
       `;
 
-      const text = await callTencentHunyuan(systemPrompt, userPrompt);
+      const text = await callGemini(systemPrompt, userPrompt);
       
       // Parse single post result
       const titleMatch = text.match(/\$\$\$TITLE\$\$\$\s*(.+)/);
@@ -401,7 +244,7 @@ const App = () => {
           <span className="gradient-text">TrendWeaver</span> 爆款推文
         </h1>
         <p className="text-slate-500 text-lg max-w-2xl mx-auto">
-          输入主题，<b>腾讯混元 AI</b> 自动生成<b>实用、硬核</b>的科普短文，并自动匹配素材。
+          输入主题，<b>Google Gemini AI</b> 自动生成<b>实用、硬核</b>的科普短文，并自动匹配素材。
           <br />
           <span className="text-sm opacity-80">生成后可<b>自定义文风</b>及<b>篇幅长短</b></span>
         </p>
@@ -454,7 +297,7 @@ const App = () => {
             {loading ? (
               <>
                 <LucideLoader2 className="w-6 h-6 animate-spin" />
-                正在调用混元模型...
+                正在调用 Gemini 模型...
               </>
             ) : (
               <>
@@ -646,7 +489,7 @@ const App = () => {
 
       {/* Note about Sources (Hunyuan does not provide search grounding in this mode easily) */}
       <div className="mt-16 pt-8 border-t border-slate-200 text-center text-slate-400 text-xs">
-         Power by Tencent Cloud Hunyuan
+         Power by Google Gemini
       </div>
 
     </div>
