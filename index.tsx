@@ -94,17 +94,20 @@ const App = () => {
         3.  **Conclusion**: Quick summary.
         4.  **Length**: **MEDIUM**. ~600-800 Chinese characters. (Content must be substantial but language should remain concise/punchy. No filler words.)
 
-        **Output Requirements:**
-        - **Variations**: 4 practical angles.
+        **Output Requirements (CRITICAL):**
+        - **Variations**: Generate exactly 4 different articles.
+        - **Separator**: Use "---POST_DIVIDER---" to separate articles.
+        - **Tags**: Use the EXACT tags provided below. **DO NOT TRANSLATE THE TAGS INTO CHINESE**.
         - **Titles**: **STRICTLY UNDER 15 CHINESE CHARACTERS**.
         - **Angle Label**: Chinese, 2-4 chars (e.g. 实操教学).
         - **Image Keyword**: A short, descriptive ENGLISH keyword or phrase for finding a relevant stock photo (e.g. "messy desk", "smartphone security").
-        - **Format**: 
+        
+        **Strict Output Format:**
         $$$TITLE$$$ [Title]
         $$$ANGLE$$$ [Angle]
         $$$IMAGE_KEYWORD$$$ [English Keyword]
         $$$CONTENT$$$
-        [Body]
+        [Body content here...]
         ---POST_DIVIDER---
       `;
 
@@ -132,7 +135,6 @@ const App = () => {
     setRewriting(true);
     const targetPost = posts[index];
 
-    // Updated defaults to match the new generation length
     let lengthInstruction = "Length: Medium (~600-800 chars). Keep it informative but concise.";
     if (lengthPreference === 'expand') {
       lengthInstruction = "Length: EXPAND the content significantly. Add more examples and details. Target: 800-1000+ characters.";
@@ -147,6 +149,8 @@ const App = () => {
         **Original**: Title: ${targetPost.title}, Content: ${targetPost.content}
         **Target Style**: "${customStyle}"
         **Target Length**: "${lengthInstruction}"
+        **Format Requirement**: DO NOT TRANSLATE TAGS. Use $$$TITLE$$$, $$$CONTENT$$$ etc.
+        
         **Output Format**:
         $$$TITLE$$$ [New Title]
         $$$ANGLE$$$ [New Style Label]
@@ -157,27 +161,15 @@ const App = () => {
 
       const text = await callServerApi(systemPrompt, userPrompt);
       
-      const titleMatch = text.match(/\$\$\$TITLE\$\$\$\s*(.+)/);
-      const angleMatch = text.match(/\$\$\$ANGLE\$\$\$\s*(.+)/);
-      const imageMatch = text.match(/\$\$\$IMAGE_KEYWORD\$\$\$\s*(.+)/);
-      
-      const contentSplit = text.split("$$$CONTENT$$$");
-      let contentBody = contentSplit.length > 1 ? contentSplit[1].trim() : text.trim();
-      contentBody = contentBody.replace(/\*\*/g, "").replace(/\*/g, "").replace(/---POST_DIVIDER---/g, "");
-
-      const newPost: GeneratedPost = {
-        title: titleMatch ? titleMatch[1].trim() : targetPost.title,
-        angle: angleMatch ? angleMatch[1].trim() : "新风格",
-        imageKeyword: imageMatch ? imageMatch[1].trim() : targetPost.imageKeyword,
-        content: contentBody
-      };
-
-      const newPosts = [...posts];
-      newPosts[index] = newPost;
-      setPosts(newPosts);
-      setEditingIndex(null); 
-      setCustomStyle("");
-      setLengthPreference('default');
+      const parsed = parseResponse(text); // Reuse robust parser
+      if (parsed.length > 0) {
+         const newPosts = [...posts];
+         newPosts[index] = parsed[0];
+         setPosts(newPosts);
+         setEditingIndex(null); 
+         setCustomStyle("");
+         setLengthPreference('default');
+      }
 
     } catch (err: any) {
       alert("改写失败: " + err.message);
@@ -186,17 +178,40 @@ const App = () => {
     }
   };
 
-  // Helper
+  // Helper: Robust Parser
   const parseResponse = (text: string): GeneratedPost[] => {
     const cleanText = text.replace(/```/g, ''); 
-    const rawPosts = cleanText.split("---POST_DIVIDER---").filter(p => p.trim().length > 20);
+    // Handle split. Model might forget newline before divider.
+    const rawPosts = cleanText.split(/---POST_DIVIDER---/i).filter(p => p.trim().length > 20);
+    
     return rawPosts.map((raw) => {
-      const titleMatch = raw.match(/\$\$\$TITLE\$\$\$\s*(.+)/);
-      const angleMatch = raw.match(/\$\$\$ANGLE\$\$\$\s*(.+)/);
-      const imageMatch = raw.match(/\$\$\$IMAGE_KEYWORD\$\$\$\s*(.+)/);
-      const contentSplit = raw.split("$$$CONTENT$$$");
-      let contentBody = contentSplit.length > 1 ? contentSplit[1].trim() : (raw.trim());
+      // Regex to handle:
+      // 1. English ($$$TITLE$$$) OR Chinese ($$$标题$$$) tags
+      // 2. Optional colons (: or ：)
+      // 3. Optional whitespace
+      
+      const titleMatch = raw.match(/\$\$\$(?:TITLE|标题)\$\$\$[:：]?\s*(.+)/i);
+      const angleMatch = raw.match(/\$\$\$(?:ANGLE|角度)\$\$\$[:：]?\s*(.+)/i);
+      const imageMatch = raw.match(/\$\$\$(?:IMAGE_KEYWORD|图片关键词)\$\$\$[:：]?\s*(.+)/i);
+      
+      // Split content. Support both English and Chinese tag
+      let contentBody = "";
+      const contentSplit = raw.split(/\$\$\$(?:CONTENT|内容)\$\$\$[:：]?/i);
+      
+      if (contentSplit.length > 1) {
+        contentBody = contentSplit[1].trim();
+      } else {
+        // Fallback: if no content tag found, try to strip the header lines and take the rest
+        contentBody = raw
+          .replace(/\$\$\$(?:TITLE|标题)\$\$\$.+/i, '')
+          .replace(/\$\$\$(?:ANGLE|角度)\$\$\$.+/i, '')
+          .replace(/\$\$\$(?:IMAGE_KEYWORD|图片关键词)\$\$\$.+/i, '')
+          .trim();
+      }
+
+      // Cleanup markup
       contentBody = contentBody.replace(/\*\*/g, "").replace(/\*/g, "");
+
       return {
         title: titleMatch ? titleMatch[1].trim() : "未命名标题",
         angle: angleMatch ? angleMatch[1].trim() : "实用干货",
