@@ -1,7 +1,11 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { GoogleGenAI } from "@google/genai";
-import { LucideSparkles, LucideCopy, LucideSearch, LucideBookOpen, LucideSend, LucideLoader2, LucideWand2, LucideX, LucideImage, LucideExternalLink, LucideMaximize2, LucideMinimize2, LucideAlignJustify } from "lucide-react";
+import { 
+  LucideSparkles, LucideCopy, LucideSearch, LucideBookOpen, 
+  LucideLoader2, LucideWand2, LucideX, LucideImage, 
+  LucideExternalLink, LucideMaximize2, LucideMinimize2, 
+  LucideAlignJustify, LucideCloud
+} from "lucide-react";
 
 // --- Types ---
 interface GeneratedPost {
@@ -9,13 +13,6 @@ interface GeneratedPost {
   angle: string;
   imageKeyword: string;
   content: string;
-}
-
-interface GroundingChunk {
-  web?: {
-    uri: string;
-    title: string;
-  };
 }
 
 // Quick presets for the rewrite feature
@@ -28,54 +25,45 @@ const REWRITE_PRESETS = [
   "温柔邻家"
 ];
 
-// --- Google Gemini API Helper ---
-
-async function callGemini(systemPrompt: string, userPrompt: string) {
-  let apiKey = "";
-  
+// --- API Helper (Server Call) ---
+async function callServerApi(systemPrompt: string, userPrompt: string) {
   try {
-    // Direct access to allow build-time string substitution (e.g. DefinePlugin)
-    // to work even if 'process' is undefined at runtime in the browser.
-    apiKey = process.env.API_KEY || "";
-  } catch (e) {
-    // Fallback: If 'process' is not defined and no substitution happened,
-    // we might be in a dev environment or misconfiguration.
-    console.warn("Process env access error:", e);
-  }
-
-  if (!apiKey) {
-    throw new Error("API Key 未配置。如果您在本地运行，请配置 .env；如果在 Vercel，请在 Settings > Environment Variables 中添加 API_KEY。");
-  }
-
-  // Initialize instance
-  const ai = new GoogleGenAI({ apiKey });
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.7,
+    const response = await fetch('/api/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
-      contents: userPrompt,
+      body: JSON.stringify({
+        systemPrompt,
+        userPrompt
+      }),
     });
 
-    return response.text || "";
+    const data = await response.json();
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error("后端接口未找到。请确认已部署到 Vercel 并且 API 文件位于 api/generate.ts");
+      }
+      throw new Error(data.error || "请求失败");
+    }
+
+    return data.text || "";
   } catch (error: any) {
-    console.error("Gemini API Error:", error);
-    throw new Error(error.message || "AI 生成服务暂时不可用");
+    console.error("API Call Error:", error);
+    throw error;
   }
 }
 
 // --- Main Component ---
 const App = () => {
+  // App State
   const [topic, setTopic] = useState("");
   const [context, setContext] = useState("");
   const [loading, setLoading] = useState(false);
   const [posts, setPosts] = useState<GeneratedPost[]>([]);
-  const [sources, setSources] = useState<GroundingChunk[]>([]);
   const [error, setError] = useState<string | null>(null);
-
+  
   // Rewrite State
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [customStyle, setCustomStyle] = useState("");
@@ -89,8 +77,7 @@ const App = () => {
     setLoading(true);
     setError(null);
     setPosts([]);
-    setSources([]);
-    setEditingIndex(null); // Reset any open editors
+    setEditingIndex(null);
 
     try {
       const systemPrompt = `You are a senior editor for a popular content platform. Target Audience: Mass market users. Core Value: Utility (有用) & Efficiency (高效).`;
@@ -98,13 +85,9 @@ const App = () => {
       const userPrompt = `
         **Task:**
         1. Search for practical knowledge regarding: "${topic}".
-        2. Generate 4 distinct, distinct articles that **TEACH** the user something specific.
+        2. Generate 4 distinct articles that **TEACH** the user something specific.
         3. Context: "${context || "Focus on practical skills, safety tips, or efficiency."}"
         
-        **Content Strategy (Default: Practical/Dry Goods):**
-        - Teach specific methods (e.g., how to delete folders, how to claim insurance).
-        - Be objective, clear, and helpful.
-
         **Strict Article Structure:**
         1.  **Opening**: Quick hook.
         2.  **Body**: Concise points.
@@ -125,11 +108,13 @@ const App = () => {
         ---POST_DIVIDER---
       `;
 
-      // Call Gemini API
-      const text = await callGemini(systemPrompt, userPrompt);
+      // Call Backend API
+      const text = await callServerApi(systemPrompt, userPrompt);
 
-      setSources([]);
       const parsed = parseResponse(text);
+      if (parsed.length === 0) {
+        throw new Error("生成内容为空，请换个主题重试");
+      }
       setPosts(parsed);
 
     } catch (err: any) {
@@ -147,34 +132,20 @@ const App = () => {
     setRewriting(true);
     const targetPost = posts[index];
 
-    // Determine length instruction
     let lengthInstruction = "Length: Keep it short (~300-400 chars).";
     if (lengthPreference === 'expand') {
-      lengthInstruction = "Length: EXPAND the content significantly. Add specific examples, step-by-step details, and deeper explanation. Target: 600-800 characters.";
+      lengthInstruction = "Length: EXPAND the content significantly. Target: 600-800 characters.";
     } else if (lengthPreference === 'shorten') {
-      lengthInstruction = "Length: CONDENSE the content. Remove filler words. Be extremely concise and punchy. Target: < 200 characters.";
+      lengthInstruction = "Length: CONDENSE the content. Target: < 200 characters.";
     }
 
     try {
       const systemPrompt = "Role: Expert Content Editor & Stylist.";
       const userPrompt = `
-        **Task**: Rewrite the provided article to strictly match the **User's Desired Style** and **Length Preference**.
-        
-        **Original Article**:
-        Title: ${targetPost.title}
-        Content: ${targetPost.content}
-
-        **Target Style Instruction**: "${customStyle}"
-        (If "Xiaohongshu/小红书", use many emojis, bullet points, and enthusiastic tone. If "Emotional", focus on feelings.)
-
-        **Target Length Instruction**: "${lengthInstruction}"
-
-        **Constraints**:
-        1. Keep the core useful information/facts.
-        2. Change the Tone, Structure, and Title to fit the new style.
-        3. **Title**: Under 15 chars, fitting the new style.
-        4. **Image Keyword**: Update the English keyword if the tone changes significantly (e.g., from "office" to "cozy reading corner").
-
+        **Task**: Rewrite the provided article.
+        **Original**: Title: ${targetPost.title}, Content: ${targetPost.content}
+        **Target Style**: "${customStyle}"
+        **Target Length**: "${lengthInstruction}"
         **Output Format**:
         $$$TITLE$$$ [New Title]
         $$$ANGLE$$$ [New Style Label]
@@ -183,9 +154,8 @@ const App = () => {
         [New Content]
       `;
 
-      const text = await callGemini(systemPrompt, userPrompt);
+      const text = await callServerApi(systemPrompt, userPrompt);
       
-      // Parse single post result
       const titleMatch = text.match(/\$\$\$TITLE\$\$\$\s*(.+)/);
       const angleMatch = text.match(/\$\$\$ANGLE\$\$\$\s*(.+)/);
       const imageMatch = text.match(/\$\$\$IMAGE_KEYWORD\$\$\$\s*(.+)/);
@@ -201,11 +171,10 @@ const App = () => {
         content: contentBody
       };
 
-      // Update state
       const newPosts = [...posts];
       newPosts[index] = newPost;
       setPosts(newPosts);
-      setEditingIndex(null); // Close editor
+      setEditingIndex(null); 
       setCustomStyle("");
       setLengthPreference('default');
 
@@ -216,17 +185,14 @@ const App = () => {
     }
   };
 
-  // Helper to parse the multi-post response
+  // Helper
   const parseResponse = (text: string): GeneratedPost[] => {
-    // Basic cleanup
     const cleanText = text.replace(/```/g, ''); 
-    
     const rawPosts = cleanText.split("---POST_DIVIDER---").filter(p => p.trim().length > 20);
     return rawPosts.map((raw) => {
       const titleMatch = raw.match(/\$\$\$TITLE\$\$\$\s*(.+)/);
       const angleMatch = raw.match(/\$\$\$ANGLE\$\$\$\s*(.+)/);
       const imageMatch = raw.match(/\$\$\$IMAGE_KEYWORD\$\$\$\s*(.+)/);
-      
       const contentSplit = raw.split("$$$CONTENT$$$");
       let contentBody = contentSplit.length > 1 ? contentSplit[1].trim() : (raw.trim());
       contentBody = contentBody.replace(/\*\*/g, "").replace(/\*/g, "");
@@ -261,18 +227,17 @@ const App = () => {
         <h1 className="text-5xl font-black tracking-tight mb-4">
           <span className="gradient-text">TrendWeaver</span> 爆款推文
         </h1>
-        <p className="text-slate-500 text-lg max-w-2xl mx-auto">
-          输入主题，<b>Google Gemini AI</b> 自动生成<b>实用、硬核</b>的科普短文，并自动匹配素材。
-          <br />
-          <span className="text-sm opacity-80">生成后可<b>自定义文风</b>及<b>篇幅长短</b></span>
+        <p className="text-slate-500 text-lg max-w-2xl mx-auto flex items-center justify-center gap-2">
+          <span>AI 驱动的爆款内容生成器</span>
+          <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs font-bold border border-slate-200 flex items-center gap-1">
+            <LucideCloud className="w-3 h-3" /> Vercel Serverless
+          </span>
         </p>
       </div>
 
       {/* Input Section */}
       <div className="bg-white rounded-2xl shadow-xl p-6 md:p-8 mb-12 border border-slate-100 max-w-3xl mx-auto">
         <div className="space-y-6">
-          
-          {/* Topic Input */}
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
               <LucideSearch className="w-4 h-4 text-indigo-500" />
@@ -287,7 +252,6 @@ const App = () => {
             />
           </div>
 
-          {/* Context Input */}
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
               <LucideBookOpen className="w-4 h-4 text-indigo-500" />
@@ -302,7 +266,6 @@ const App = () => {
             />
           </div>
 
-          {/* Action Button */}
           <button
             onClick={handleGenerate}
             disabled={loading || !topic.trim()}
@@ -315,7 +278,7 @@ const App = () => {
             {loading ? (
               <>
                 <LucideLoader2 className="w-6 h-6 animate-spin" />
-                正在调用 Gemini 模型...
+                正在生成...
               </>
             ) : (
               <>
@@ -329,7 +292,8 @@ const App = () => {
 
       {/* Error Message */}
       {error && (
-        <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-8 text-center border border-red-100 whitespace-pre-wrap">
+        <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-8 text-center border border-red-100 whitespace-pre-wrap text-sm">
+          <p className="font-bold mb-1">请求出错</p>
           {error}
         </div>
       )}
@@ -340,9 +304,8 @@ const App = () => {
           {posts.map((post, idx) => (
             <div key={idx} className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border border-slate-100 overflow-hidden flex flex-col relative group">
               
-              {/* Image Section (Freepik Link) */}
+              {/* Image Section */}
               <div className="relative h-48 bg-slate-100 overflow-hidden group/image">
-                 {/* Visual Placeholder (Pollinations) */}
                  <img 
                    src={`https://image.pollinations.ai/prompt/${encodeURIComponent(post.imageKeyword)}?width=800&height=400&nologo=true`} 
                    alt={post.imageKeyword}
@@ -351,8 +314,6 @@ const App = () => {
                      (e.target as HTMLImageElement).src = "https://placehold.co/800x400?text=No+Preview";
                    }}
                  />
-                 
-                 {/* Overlay Button for Freepik */}
                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
                     <a 
                       href={`https://www.freepik.com/search?format=search&query=${encodeURIComponent(post.imageKeyword)}&license=free`} 
@@ -361,12 +322,10 @@ const App = () => {
                       className="bg-white text-slate-800 px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 shadow-lg hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
                     >
                       <LucideImage className="w-4 h-4" />
-                      Freepik 免费配图
+                      Freepik 配图
                       <LucideExternalLink className="w-3 h-3 text-slate-400" />
                     </a>
                  </div>
-                 
-                 {/* Hint Label */}
                  <div className="absolute bottom-2 right-2 bg-black/50 text-white text-[10px] px-2 py-1 rounded backdrop-blur-sm">
                    关键词: {post.imageKeyword}
                  </div>
@@ -414,11 +373,9 @@ const App = () => {
                 </button>
               </div>
 
-              {/* Rewrite Panel (Expandable) */}
+              {/* Rewrite Panel */}
               {editingIndex === idx && (
                 <div className="p-4 bg-indigo-50/50 border-t border-indigo-100 animate-fade-in">
-                  
-                  {/* Style Selection */}
                   <div className="mb-4">
                     <label className="text-xs font-bold text-indigo-900 mb-2 block">1. 选择或输入风格</label>
                     <div className="flex flex-wrap gap-2 mb-3">
@@ -437,22 +394,18 @@ const App = () => {
                         type="text"
                         value={customStyle}
                         onChange={(e) => setCustomStyle(e.target.value)}
-                        placeholder="输入自定义风格，例如：严谨新闻、脱口秀段子..."
+                        placeholder="输入自定义风格..."
                         className="w-full text-sm p-3 pr-10 rounded-lg border border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         autoFocus
                       />
                       {customStyle && (
-                         <button 
-                           onClick={() => setCustomStyle("")}
-                           className="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600"
-                         >
+                         <button onClick={() => setCustomStyle("")} className="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600">
                            <LucideX className="w-4 h-4" />
                          </button>
                       )}
                     </div>
                   </div>
 
-                  {/* Length Selection */}
                   <div className="mb-4">
                     <label className="text-xs font-bold text-indigo-900 mb-2 block">2. 内容篇幅调整</label>
                     <div className="grid grid-cols-3 gap-2">
@@ -489,7 +442,6 @@ const App = () => {
                     </div>
                   </div>
 
-                  {/* Submit Button */}
                   <button
                     onClick={() => handleRewrite(idx)}
                     disabled={rewriting || !customStyle.trim()}
@@ -504,10 +456,9 @@ const App = () => {
           ))}
         </div>
       )}
-
-      {/* Note about Sources (Hunyuan does not provide search grounding in this mode easily) */}
+      
       <div className="mt-16 pt-8 border-t border-slate-200 text-center text-slate-400 text-xs">
-         Power by Google Gemini
+         Deployment: Vercel Serverless
       </div>
 
     </div>
