@@ -89,10 +89,10 @@ const App = () => {
         3. Context: "${context || "Focus on practical skills, safety tips, or efficiency."}"
         
         **Strict Article Structure:**
-        1.  **Opening**: Quick hook.
-        2.  **Body**: Concise points.
+        1.  **Opening**: Quick hook (1-2 sentences).
+        2.  **Body**: Detailed points. Must include specific steps, methods, or examples.
         3.  **Conclusion**: Quick summary.
-        4.  **Length**: **SHORT**. ~300-400 Chinese characters.
+        4.  **Length**: **MEDIUM**. ~600-800 Chinese characters. (Content must be substantial but language should remain concise/punchy. No filler words.)
 
         **Output Requirements:**
         - **Variations**: 4 practical angles.
@@ -132,11 +132,12 @@ const App = () => {
     setRewriting(true);
     const targetPost = posts[index];
 
-    let lengthInstruction = "Length: Keep it short (~300-400 chars).";
+    // Updated defaults to match the new generation length
+    let lengthInstruction = "Length: Medium (~600-800 chars). Keep it informative but concise.";
     if (lengthPreference === 'expand') {
-      lengthInstruction = "Length: EXPAND the content significantly. Target: 600-800 characters.";
+      lengthInstruction = "Length: EXPAND the content significantly. Add more examples and details. Target: 800-1000+ characters.";
     } else if (lengthPreference === 'shorten') {
-      lengthInstruction = "Length: CONDENSE the content. Target: < 200 characters.";
+      lengthInstruction = "Length: CONDENSE the content. Remove filler. Target: ~300 characters.";
     }
 
     try {
