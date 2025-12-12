@@ -50,22 +50,38 @@ async function hmac(key: Uint8Array | string, msg: string): Promise<Uint8Array> 
 }
 
 async function callTencentHunyuan(systemPrompt: string, userPrompt: string) {
-  const secretId = process.env.TENCENT_SECRET_ID || "";
-  const secretKey = process.env.TENCENT_SECRET_KEY || "";
+  // 辅助函数：尝试读取不同前缀的环境变量
+  const getEnvVar = (key: string) => {
+    if (typeof process !== 'undefined' && process.env) {
+      return process.env[key] || 
+             process.env[`NEXT_PUBLIC_${key}`] || 
+             process.env[`VITE_${key}`] || 
+             process.env[`REACT_APP_${key}`];
+    }
+    return undefined;
+  };
+
+  // 1. 尝试从环境变量读取 (支持 TENCENT_..., NEXT_PUBLIC_TENCENT_... 等多种格式)
+  const envId = getEnvVar('TENCENT_SECRET_ID');
+  const envKey = getEnvVar('TENCENT_SECRET_KEY');
+
+  // 2. 如果环境变量未设置，使用代码中的硬编码作为兜底 (方便预览)
+  const secretId = envId || "AKIDWzLftR9nMsUahwCPUREuushXI8qPvJfs";
+  const secretKey = envKey || "7X0R1kaZTFA0jhnmdLakniUB6wc7VwFR";
   
   if (!secretId || !secretKey) {
-    throw new Error("Missing Tencent Cloud Credentials (TENCENT_SECRET_ID / TENCENT_SECRET_KEY)");
+    throw new Error("Missing Tencent Cloud Credentials. Please check your keys.");
   }
 
   const endpoint = "hunyuan.tencentcloudapi.com";
   const service = "hunyuan";
-  const region = ""; // hunyuan global/generic doesn't strictly require region in header sometimes, but let's leave empty or use generic
+  const region = ""; 
   const action = "ChatCompletions";
   const version = "2023-09-01";
   
   // Construct Payload
   const payload = {
-    Model: "hunyuan-standard", // Or "hunyuan-pro", "hunyuan-lite"
+    Model: "hunyuan-standard", 
     Messages: [
       { Role: "system", Content: systemPrompt },
       { Role: "user", Content: userPrompt }
@@ -107,6 +123,8 @@ async function callTencentHunyuan(systemPrompt: string, userPrompt: string) {
   const authorization = `${algorithm} Credential=${secretId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
 
   // 6. Fetch
+  // 注意：腾讯云 API 通常不支持浏览器直接跨域调用 (CORS)。
+  // 如果遇到 CORS 错误，通常需要配置代理服务器。但在纯前端演示环境中，我们尝试直接请求。
   const response = await fetch(`https://${endpoint}`, {
     method: "POST",
     headers: {
@@ -115,7 +133,6 @@ async function callTencentHunyuan(systemPrompt: string, userPrompt: string) {
       "X-TC-Action": action,
       "X-TC-Version": version,
       "X-TC-Timestamp": timestamp.toString(),
-      // "X-TC-Region": region, // Optional for global endpoints
     },
     body: payloadStr
   });
@@ -203,7 +220,12 @@ const App = () => {
 
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "生成失败，请重试。");
+      const isCors = err.message.includes("Failed to fetch") || err.message.includes("NetworkError");
+      if (isCors) {
+        setError("网络请求失败 (CORS)。腾讯云 API 不允许浏览器直接跨域访问。请尝试在后端部署或使用支持 CORS 的代理。");
+      } else {
+        setError(err.message || "生成失败，请重试。");
+      }
     } finally {
       setLoading(false);
     }
