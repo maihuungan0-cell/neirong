@@ -83,32 +83,32 @@ const App = () => {
       const systemPrompt = `You are a senior editor for a popular content platform. Target Audience: Mass market users. Core Value: Utility (有用) & Efficiency (高效).`;
       
       const userPrompt = `
-        **Task:**
-        1. Search for practical knowledge regarding: "${topic}".
-        2. Generate 4 distinct articles that **TEACH** the user something specific.
-        3. Context: "${context || "Focus on practical skills, safety tips, or efficiency."}"
+        **Task Definition:**
+        1. Topic: "${topic}".
+        2. Context: "${context || "Focus on practical skills, safety tips, or efficiency."}".
+        3. **GOAL**: Generate **4 (FOUR)** distinct, independent articles on this topic from different angles.
         
-        **Strict Article Structure:**
-        1.  **Opening**: Quick hook (1-2 sentences).
-        2.  **Body**: Detailed points. Must include specific steps, methods, or examples.
-        3.  **Conclusion**: Quick summary.
-        4.  **Length**: **MEDIUM**. ~600-800 Chinese characters. (Content must be substantial but language should remain concise/punchy. No filler words.)
+        **Structure for EACH Article:**
+        1.  **Opening**: Hook the reader.
+        2.  **Body**: Detailed steps/methods.
+        3.  **Conclusion**: Summary.
+        4.  **Length**: Medium (~600-800 Chinese characters).
 
-        **Output Requirements (CRITICAL):**
-        - **Variations**: Generate exactly 4 different articles.
-        - **Separator**: Use "---POST_DIVIDER---" to separate articles.
-        - **Tags**: Use the EXACT tags provided below. **DO NOT TRANSLATE THE TAGS INTO CHINESE**.
-        - **Titles**: **STRICTLY UNDER 15 CHINESE CHARACTERS**.
-        - **Angle Label**: Chinese, 2-4 chars (e.g. 实操教学).
-        - **Image Keyword**: A short, descriptive ENGLISH keyword or phrase for finding a relevant stock photo (e.g. "messy desk", "smartphone security").
-        
-        **Strict Output Format:**
-        $$$TITLE$$$ [Title]
-        $$$ANGLE$$$ [Angle]
+        **Output Format Requirements (STRICT):**
+        - Separator: Use "---POST_DIVIDER---" between articles.
+        - Tags: Use exactly $$$TITLE$$$, $$$ANGLE$$$, $$$IMAGE_KEYWORD$$$, $$$CONTENT$$$.
+        - **DO NOT** put the tags inside the content block.
+        - **DO NOT** translate the tags.
+
+        **Example Output Template:**
+        $$$TITLE$$$ [Title 1]
+        $$$ANGLE$$$ [Angle 1]
         $$$IMAGE_KEYWORD$$$ [English Keyword]
         $$$CONTENT$$$
-        [Body content here...]
+        [Content for article 1...]
         ---POST_DIVIDER---
+        $$$TITLE$$$ [Title 2]
+        ...
       `;
 
       // Call Backend API
@@ -181,35 +181,41 @@ const App = () => {
   // Helper: Robust Parser
   const parseResponse = (text: string): GeneratedPost[] => {
     const cleanText = text.replace(/```/g, ''); 
-    // Handle split. Model might forget newline before divider.
-    const rawPosts = cleanText.split(/---POST_DIVIDER---/i).filter(p => p.trim().length > 20);
+    
+    // Split by separator OR just "---" on a new line (in case model hallucinates format)
+    // The regex matches:
+    // 1. "---POST_DIVIDER---"
+    // 2. OR a line that contains only "---" or "***"
+    const rawPosts = cleanText
+      .split(/(?:---POST_DIVIDER---|(?:\r?\n|^)\s*[-*]{3,}\s*(?:\r?\n|$))/i)
+      .filter(p => p.trim().length > 50); // Filter out empty or too short chunks
     
     return rawPosts.map((raw) => {
-      // Regex to handle:
-      // 1. English ($$$TITLE$$$) OR Chinese ($$$标题$$$) tags
-      // 2. Optional colons (: or ：)
-      // 3. Optional whitespace
-      
       const titleMatch = raw.match(/\$\$\$(?:TITLE|标题)\$\$\$[:：]?\s*(.+)/i);
       const angleMatch = raw.match(/\$\$\$(?:ANGLE|角度)\$\$\$[:：]?\s*(.+)/i);
       const imageMatch = raw.match(/\$\$\$(?:IMAGE_KEYWORD|图片关键词)\$\$\$[:：]?\s*(.+)/i);
       
-      // Split content. Support both English and Chinese tag
+      // Determine content. 
+      // Strategy: Split by Content tag. If fails, try to strip metadata from top.
       let contentBody = "";
       const contentSplit = raw.split(/\$\$\$(?:CONTENT|内容)\$\$\$[:：]?/i);
       
       if (contentSplit.length > 1) {
-        contentBody = contentSplit[1].trim();
+        contentBody = contentSplit[1];
       } else {
-        // Fallback: if no content tag found, try to strip the header lines and take the rest
-        contentBody = raw
-          .replace(/\$\$\$(?:TITLE|标题)\$\$\$.+/i, '')
-          .replace(/\$\$\$(?:ANGLE|角度)\$\$\$.+/i, '')
-          .replace(/\$\$\$(?:IMAGE_KEYWORD|图片关键词)\$\$\$.+/i, '')
-          .trim();
+        // Fallback: Manually remove metadata lines
+        contentBody = raw;
       }
 
-      // Cleanup markup
+      // AGGRESSIVE CLEANUP: Remove any lines that start with $$$
+      // This fixes the issue where the user sees raw tags in the card.
+      contentBody = contentBody
+        .split('\n')
+        .filter(line => !line.trim().startsWith('$$$'))
+        .join('\n')
+        .trim();
+
+      // Final cleanup of markdown bolding
       contentBody = contentBody.replace(/\*\*/g, "").replace(/\*/g, "");
 
       return {
