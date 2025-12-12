@@ -29,9 +29,29 @@ const REWRITE_PRESETS = [
 ];
 
 // --- Google Gemini API Helper ---
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// MOVED INITIALIZATION INSIDE FUNCTION TO PREVENT WHITE SCREEN CRASH
+// const ai = new GoogleGenAI({ apiKey: process.env.API_KEY }); 
 
 async function callGemini(systemPrompt: string, userPrompt: string) {
+  let apiKey = "";
+  
+  // Safe access to process.env to avoid ReferenceError in browser
+  try {
+    // Check if process exists before accessing env (Vite/Browser safety)
+    if (typeof process !== "undefined" && process.env && process.env.API_KEY) {
+      apiKey = process.env.API_KEY;
+    }
+  } catch (e) {
+    console.warn("Could not access process.env:", e);
+  }
+
+  if (!apiKey) {
+    throw new Error("API Key 未配置或无法访问。请确保 Vercel 环境变量已设置，或构建配置正确 (process.env.API_KEY)。");
+  }
+
+  // Initialize instance only when needed
+  const ai = new GoogleGenAI({ apiKey });
+
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
