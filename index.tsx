@@ -29,27 +29,25 @@ const REWRITE_PRESETS = [
 ];
 
 // --- Google Gemini API Helper ---
-// MOVED INITIALIZATION INSIDE FUNCTION TO PREVENT WHITE SCREEN CRASH
-// const ai = new GoogleGenAI({ apiKey: process.env.API_KEY }); 
 
 async function callGemini(systemPrompt: string, userPrompt: string) {
   let apiKey = "";
   
-  // Safe access to process.env to avoid ReferenceError in browser
   try {
-    // Check if process exists before accessing env (Vite/Browser safety)
-    if (typeof process !== "undefined" && process.env && process.env.API_KEY) {
-      apiKey = process.env.API_KEY;
-    }
+    // Direct access to allow build-time string substitution (e.g. DefinePlugin)
+    // to work even if 'process' is undefined at runtime in the browser.
+    apiKey = process.env.API_KEY || "";
   } catch (e) {
-    console.warn("Could not access process.env:", e);
+    // Fallback: If 'process' is not defined and no substitution happened,
+    // we might be in a dev environment or misconfiguration.
+    console.warn("Process env access error:", e);
   }
 
   if (!apiKey) {
-    throw new Error("API Key 未配置或无法访问。请确保 Vercel 环境变量已设置，或构建配置正确 (process.env.API_KEY)。");
+    throw new Error("API Key 未配置。如果您在本地运行，请配置 .env；如果在 Vercel，请在 Settings > Environment Variables 中添加 API_KEY。");
   }
 
-  // Initialize instance only when needed
+  // Initialize instance
   const ai = new GoogleGenAI({ apiKey });
 
   try {
