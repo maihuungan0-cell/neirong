@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { GoogleGenAI } from "@google/genai";
 import { LucideSparkles, LucideCopy, LucideSearch, LucideBookOpen, LucideSend, LucideLoader2, LucideWand2, LucideX, LucideImage, LucideExternalLink, LucideMaximize2, LucideMinimize2, LucideAlignJustify } from "lucide-react";
 
 // --- Types ---
@@ -28,6 +27,112 @@ const REWRITE_PRESETS = [
   "温柔邻家"
 ];
 
+// --- Tencent Cloud API Helpers (Browser Compatible) ---
+// 实现腾讯云 V3 签名算法
+async function sha256Hex(str: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(str);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function hmac(key: Uint8Array | string, msg: string): Promise<Uint8Array> {
+  const encoder = new TextEncoder();
+  const keyData = typeof key === 'string' ? encoder.encode(key) : key;
+  const msgData = encoder.encode(msg);
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
+  return new Uint8Array(signature);
+}
+
+async function callTencentHunyuan(systemPrompt: string, userPrompt: string) {
+  const secretId = process.env.TENCENT_SECRET_ID || "";
+  const secretKey = process.env.TENCENT_SECRET_KEY || "";
+  
+  if (!secretId || !secretKey) {
+    throw new Error("Missing Tencent Cloud Credentials (TENCENT_SECRET_ID / TENCENT_SECRET_KEY)");
+  }
+
+  const endpoint = "hunyuan.tencentcloudapi.com";
+  const service = "hunyuan";
+  const region = ""; // hunyuan global/generic doesn't strictly require region in header sometimes, but let's leave empty or use generic
+  const action = "ChatCompletions";
+  const version = "2023-09-01";
+  
+  // Construct Payload
+  const payload = {
+    Model: "hunyuan-standard", // Or "hunyuan-pro", "hunyuan-lite"
+    Messages: [
+      { Role: "system", Content: systemPrompt },
+      { Role: "user", Content: userPrompt }
+    ],
+    Temperature: 0.7
+  };
+  const payloadStr = JSON.stringify(payload);
+
+  // 1. Timestamp variables
+  const now = new Date();
+  // Use UTC timestamp
+  const timestamp = Math.floor(now.getTime() / 1000);
+  const date = now.toISOString().slice(0, 10); // YYYY-MM-DD
+
+  // 2. Canonical Request
+  const httpRequestMethod = "POST";
+  const canonicalUri = "/";
+  const canonicalQueryString = "";
+  const canonicalHeaders = `content-type:application/json\nhost:${endpoint}\n`;
+  const signedHeaders = "content-type;host";
+  const hashedRequestPayload = await sha256Hex(payloadStr);
+  const canonicalRequest = `${httpRequestMethod}\n${canonicalUri}\n${canonicalQueryString}\n${canonicalHeaders}\n${signedHeaders}\n${hashedRequestPayload}`;
+
+  // 3. String to Sign
+  const algorithm = "TC3-HMAC-SHA256";
+  const credentialScope = `${date}/${service}/tc3_request`;
+  const hashedCanonicalRequest = await sha256Hex(canonicalRequest);
+  const stringToSign = `${algorithm}\n${timestamp}\n${credentialScope}\n${hashedCanonicalRequest}`;
+
+  // 4. Calculate Signature
+  const kSecret = "TC3" + secretKey;
+  const kDate = await hmac(kSecret, date);
+  const kService = await hmac(kDate, service);
+  const kSigning = await hmac(kService, "tc3_request");
+  const signatureRaw = await hmac(kSigning, stringToSign);
+  const signatureHex = Array.from(signatureRaw).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  // 5. Authorization Header
+  const authorization = `${algorithm} Credential=${secretId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
+
+  // 6. Fetch
+  const response = await fetch(`https://${endpoint}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": authorization,
+      "X-TC-Action": action,
+      "X-TC-Version": version,
+      "X-TC-Timestamp": timestamp.toString(),
+      // "X-TC-Region": region, // Optional for global endpoints
+    },
+    body: payloadStr
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Tencent API Error (${response.status}): ${errText}`);
+  }
+
+  const data = await response.json();
+  if (data.Response.Error) {
+    throw new Error(`Tencent API Error: ${data.Response.Error.Message}`);
+  }
+  
+  return data.Response.Choices?.[0]?.Message?.Content || "";
+}
+
 // --- Main Component ---
 const App = () => {
   const [topic, setTopic] = useState("");
@@ -54,14 +159,9 @@ const App = () => {
     setEditingIndex(null); // Reset any open editors
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const systemPrompt = `You are a senior editor for a popular content platform. Target Audience: Mass market users. Core Value: Utility (有用) & Efficiency (高效).`;
       
-      const prompt = `
-        Role: You are a senior editor for a popular content platform.
-        
-        **Target Audience**: Mass market users. 
-        **Core Value**: **Utility (有用)** & **Efficiency (高效)**.
-
+      const userPrompt = `
         **Task:**
         1. Search for practical knowledge regarding: "${topic}".
         2. Generate 4 distinct, distinct articles that **TEACH** the user something specific.
@@ -91,20 +191,13 @@ const App = () => {
         ---POST_DIVIDER---
       `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          tools: [{ googleSearch: {} }],
-        },
-      });
+      // Call Tencent API
+      const text = await callTencentHunyuan(systemPrompt, userPrompt);
 
-      // Process Grounding Metadata
-      const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-      setSources(groundingChunks);
+      // Note: Hunyuan does not return grounding chunks in standard chat response easily like Gemini
+      // So sources will be empty unless we parse them from text if the model includes links.
+      setSources([]);
 
-      // Process Text Content
-      const text = response.text || "";
       const parsed = parseResponse(text);
       setPosts(parsed);
 
@@ -132,10 +225,8 @@ const App = () => {
     }
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const prompt = `
-        Role: Expert Content Editor & Stylist.
-        
+      const systemPrompt = "Role: Expert Content Editor & Stylist.";
+      const userPrompt = `
         **Task**: Rewrite the provided article to strictly match the **User's Desired Style** and **Length Preference**.
         
         **Original Article**:
@@ -161,12 +252,7 @@ const App = () => {
         [New Content]
       `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-      });
-
-      const text = response.text || "";
+      const text = await callTencentHunyuan(systemPrompt, userPrompt);
       
       // Parse single post result
       const titleMatch = text.match(/\$\$\$TITLE\$\$\$\s*(.+)/);
@@ -201,7 +287,10 @@ const App = () => {
 
   // Helper to parse the multi-post response
   const parseResponse = (text: string): GeneratedPost[] => {
-    const rawPosts = text.split("---POST_DIVIDER---").filter(p => p.trim().length > 20);
+    // Basic cleanup
+    const cleanText = text.replace(/```/g, ''); 
+    
+    const rawPosts = cleanText.split("---POST_DIVIDER---").filter(p => p.trim().length > 20);
     return rawPosts.map((raw) => {
       const titleMatch = raw.match(/\$\$\$TITLE\$\$\$\s*(.+)/);
       const angleMatch = raw.match(/\$\$\$ANGLE\$\$\$\s*(.+)/);
@@ -242,7 +331,7 @@ const App = () => {
           <span className="gradient-text">TrendWeaver</span> 爆款推文
         </h1>
         <p className="text-slate-500 text-lg max-w-2xl mx-auto">
-          输入主题，AI 自动生成<b>实用、硬核</b>的科普短文，并自动匹配<b>Freepik素材图</b>。
+          输入主题，<b>腾讯混元 AI</b> 自动生成<b>实用、硬核</b>的科普短文，并自动匹配素材。
           <br />
           <span className="text-sm opacity-80">生成后可<b>自定义文风</b>及<b>篇幅长短</b></span>
         </p>
@@ -295,7 +384,7 @@ const App = () => {
             {loading ? (
               <>
                 <LucideLoader2 className="w-6 h-6 animate-spin" />
-                正在检索干货并生成...
+                正在调用混元模型...
               </>
             ) : (
               <>
@@ -485,25 +574,10 @@ const App = () => {
         </div>
       )}
 
-      {/* Sources Footer (Grounding) */}
-      {sources.length > 0 && (
-        <div className="mt-16 pt-8 border-t border-slate-200">
-          <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">信息来源 & 参考</h4>
-          <div className="flex flex-wrap gap-3">
-            {sources.map((chunk, i) => chunk.web ? (
-              <a 
-                key={i} 
-                href={chunk.web.uri} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-md text-xs text-slate-600 hover:text-indigo-600 hover:border-indigo-200 transition-colors shadow-sm"
-              >
-                <span className="truncate max-w-[200px]">{chunk.web.title}</span>
-              </a>
-            ) : null)}
-          </div>
-        </div>
-      )}
+      {/* Note about Sources (Hunyuan does not provide search grounding in this mode easily) */}
+      <div className="mt-16 pt-8 border-t border-slate-200 text-center text-slate-400 text-xs">
+         Power by Tencent Cloud Hunyuan
+      </div>
 
     </div>
   );
