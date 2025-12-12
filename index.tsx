@@ -61,11 +61,11 @@ async function callTencentHunyuan(systemPrompt: string, userPrompt: string) {
     return undefined;
   };
 
-  // 1. 尝试从环境变量读取 (支持 TENCENT_..., NEXT_PUBLIC_TENCENT_... 等多种格式)
+  // 1. 尝试从环境变量读取
   const envId = getEnvVar('TENCENT_SECRET_ID');
   const envKey = getEnvVar('TENCENT_SECRET_KEY');
 
-  // 2. 如果环境变量未设置，使用代码中的硬编码作为兜底 (方便预览)
+  // 2. 兜底 Key (注意：生产环境请务必使用后端转发，不要暴露 Key)
   const secretId = envId || "AKIDWzLftR9nMsUahwCPUREuushXI8qPvJfs";
   const secretKey = envKey || "7X0R1kaZTFA0jhnmdLakniUB6wc7VwFR";
   
@@ -100,8 +100,13 @@ async function callTencentHunyuan(systemPrompt: string, userPrompt: string) {
   const httpRequestMethod = "POST";
   const canonicalUri = "/";
   const canonicalQueryString = "";
-  const canonicalHeaders = `content-type:application/json\nhost:${endpoint}\n`;
-  const signedHeaders = "content-type;host";
+  
+  // critical: 从签名头中移除 Host。
+  // 因为我们使用 CORS 代理，请求到达腾讯云时 Host 可能会变，导致签名不匹配。
+  // 只签名 content-type 是安全的且符合 V3 标准。
+  const canonicalHeaders = `content-type:application/json\n`;
+  const signedHeaders = "content-type";
+  
   const hashedRequestPayload = await sha256Hex(payloadStr);
   const canonicalRequest = `${httpRequestMethod}\n${canonicalUri}\n${canonicalQueryString}\n${canonicalHeaders}\n${signedHeaders}\n${hashedRequestPayload}`;
 
@@ -122,10 +127,12 @@ async function callTencentHunyuan(systemPrompt: string, userPrompt: string) {
   // 5. Authorization Header
   const authorization = `${algorithm} Credential=${secretId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
 
-  // 6. Fetch
-  // 注意：腾讯云 API 通常不支持浏览器直接跨域调用 (CORS)。
-  // 如果遇到 CORS 错误，通常需要配置代理服务器。但在纯前端演示环境中，我们尝试直接请求。
-  const response = await fetch(`https://${endpoint}`, {
+  // 6. Fetch with CORS Proxy
+  // 使用 corsproxy.io 绕过浏览器同源策略限制
+  const proxyUrl = "https://corsproxy.io/?";
+  const targetUrl = `https://${endpoint}`;
+  
+  const response = await fetch(`${proxyUrl}${targetUrl}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -220,12 +227,7 @@ const App = () => {
 
     } catch (err: any) {
       console.error(err);
-      const isCors = err.message.includes("Failed to fetch") || err.message.includes("NetworkError");
-      if (isCors) {
-        setError("网络请求失败 (CORS)。腾讯云 API 不允许浏览器直接跨域访问。请尝试在后端部署或使用支持 CORS 的代理。");
-      } else {
-        setError(err.message || "生成失败，请重试。");
-      }
+      setError(err.message || "生成失败，请重试。");
     } finally {
       setLoading(false);
     }
