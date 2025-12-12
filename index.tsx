@@ -92,7 +92,6 @@ async function callTencentHunyuan(systemPrompt: string, userPrompt: string) {
 
   // 1. Timestamp variables
   const now = new Date();
-  // Use UTC timestamp
   const timestamp = Math.floor(now.getTime() / 1000);
   const date = now.toISOString().slice(0, 10); // YYYY-MM-DD
 
@@ -101,10 +100,9 @@ async function callTencentHunyuan(systemPrompt: string, userPrompt: string) {
   const canonicalUri = "/";
   const canonicalQueryString = "";
   
-  // critical: 从签名头中移除 Host。
-  // 因为我们使用 CORS 代理，请求到达腾讯云时 Host 可能会变，导致签名不匹配。
-  // 只签名 content-type 是安全的且符合 V3 标准。
-  const canonicalHeaders = `content-type:application/json\n`;
+  // Critical: 只签名 content-type，不签名 Host。
+  // 这样无论请求是发给 Proxy 还是直接发给腾讯云，签名都是有效的。
+  const canonicalHeaders = "content-type:application/json\n";
   const signedHeaders = "content-type";
   
   const hashedRequestPayload = await sha256Hex(payloadStr);
@@ -127,34 +125,82 @@ async function callTencentHunyuan(systemPrompt: string, userPrompt: string) {
   // 5. Authorization Header
   const authorization = `${algorithm} Credential=${secretId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
 
-  // 6. Fetch with CORS Proxy
-  // 使用 corsproxy.io 绕过浏览器同源策略限制
-  const proxyUrl = "https://corsproxy.io/?";
-  const targetUrl = `https://${endpoint}`;
-  
-  const response = await fetch(`${proxyUrl}${targetUrl}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": authorization,
-      "X-TC-Action": action,
-      "X-TC-Version": version,
-      "X-TC-Timestamp": timestamp.toString(),
-    },
-    body: payloadStr
-  });
+  // Headers object
+  const headers = {
+    "Content-Type": "application/json",
+    "Authorization": authorization,
+    "X-TC-Action": action,
+    "X-TC-Version": version,
+    "X-TC-Timestamp": timestamp.toString(),
+  };
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Tencent API Error (${response.status}): ${errText}`);
-  }
+  // --- 双重请求策略 ---
+  // 策略 A: 尝试使用 CORS Proxy (默认)
+  try {
+    const proxyUrl = "https://corsproxy.io/?";
+    // 编码目标 URL，防止特殊字符导致代理解析错误
+    const targetUrl = encodeURIComponent(`https://${endpoint}`);
+    
+    const response = await fetch(`${proxyUrl}${targetUrl}`, {
+      method: "POST",
+      headers,
+      body: payloadStr
+    });
 
-  const data = await response.json();
-  if (data.Response.Error) {
-    throw new Error(`Tencent API Error: ${data.Response.Error.Message}`);
+    if (!response.ok) {
+      const errText = await response.text();
+      // 如果是鉴权错误(401/403)，大概率是 Key 有问题，代理是通的，直接抛出
+      if (response.status === 401 || response.status === 403) {
+         throw new Error(`Tencent API Auth Error (${response.status}): ${errText}`);
+      }
+      // 其他错误(如500)可能是代理问题，抛出错误以触发 Catch 进入降级策略
+      throw new Error(`Proxy Request Failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (data.Response.Error) {
+      throw new Error(`Tencent API Error: ${data.Response.Error.Message}`);
+    }
+    return data.Response.Choices?.[0]?.Message?.Content || "";
+
+  } catch (proxyError: any) {
+    console.warn("Proxy attempt failed, falling back to direct connection...", proxyError);
+    
+    // 如果是鉴权错误，不需要重试，直接抛出
+    if (proxyError.message && proxyError.message.includes("Auth Error")) {
+      throw proxyError;
+    }
+
+    // 策略 B: 尝试直连 (用户可能安装了 Allow CORS 插件)
+    try {
+      const response = await fetch(`https://${endpoint}`, {
+        method: "POST",
+        headers,
+        body: payloadStr
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Direct Request Error (${response.status}): ${errText}`);
+      }
+
+      const data = await response.json();
+      if (data.Response.Error) {
+        throw new Error(`Tencent API Error: ${data.Response.Error.Message}`);
+      }
+      return data.Response.Choices?.[0]?.Message?.Content || "";
+
+    } catch (directError: any) {
+      // 两个策略都失败了，给出详细指导
+      let errorMessage = "网络请求失败 (Failed to fetch)。\n\n";
+      errorMessage += "原因：浏览器阻止了跨域请求 (CORS)，且公共代理暂时不可用。\n\n";
+      errorMessage += "解决方案 (二选一)：\n";
+      errorMessage += "1. 安装 'Allow CORS: Access-Control-Allow-Origin' 浏览器插件并开启 (推荐本地测试使用)。\n";
+      errorMessage += "2. 检查您的网络是否屏蔽了 corsproxy.io。\n";
+      
+      throw new Error(errorMessage);
+    }
   }
-  
-  return data.Response.Choices?.[0]?.Message?.Content || "";
 }
 
 // --- Main Component ---
@@ -422,7 +468,7 @@ const App = () => {
 
       {/* Error Message */}
       {error && (
-        <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-8 text-center border border-red-100">
+        <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-8 text-center border border-red-100 whitespace-pre-wrap">
           {error}
         </div>
       )}
