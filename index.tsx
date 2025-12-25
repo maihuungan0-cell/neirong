@@ -140,24 +140,24 @@ const App = () => {
     const targetPost = posts[index];
 
     let lengthInstruction = "篇幅保持原样。";
-    if (lengthPreference === 'expand') lengthInstruction = "大幅扩充细节，字数800+。";
-    else if (lengthPreference === 'shorten') lengthInstruction = "极度精简，保留干货，字数200左右。";
+    if (lengthPreference === 'expand') lengthInstruction = "大幅扩充细节和案例，字数增加一倍以上（800-1000字）。";
+    else if (lengthPreference === 'shorten') lengthInstruction = "极度精简，只保留最核心的步骤和结论，字数控制在200字以内。";
 
     try {
-      const systemPrompt = "你是一名文案改写专家。在保持信息权威准确的前提下，变换文风。必须输出标准的标签格式，特别是 $$$TITLE$$$。";
+      const systemPrompt = "你是一名文案改写专家。在变换文风的同时，必须维持权威准确。特别注意：必须完整输出 $$$TITLE$$$, $$$ANGLE$$$, $$$IMAGE_KEYWORD$$$ 和 $$$CONTENT$$$ 标签，确保新标题被正确包含在 $$$TITLE$$$ 中。";
       const userPrompt = `
-        **任务**: 改写以下文章，必须保留原始的权威资料来源。
+        **任务**: 改写以下文章。
         **原标题**: ${targetPost.title}
         **原内容**: ${targetPost.content}
         **目标风格**: "${customStyle}"
-        **篇幅要求**: "${lengthInstruction}"
+        **篇幅调整要求**: "${lengthInstruction}"
         
-        **输出格式 (必须包含以下所有标签)**:
-        $$$TITLE$$$ [新爆款标题]
-        $$$ANGLE$$$ [改写后的风格标签]
-        $$$IMAGE_KEYWORD$$$ [最简精准英文搜索词]
+        **输出格式 (严格按此格式，不得缺失标签)**:
+        $$$TITLE$$$ [新的吸引人的标题]
+        $$$ANGLE$$$ [风格标签]
+        $$$IMAGE_KEYWORD$$$ [最简精准英文关键词]
         $$$CONTENT$$$
-        [改写后的正文，保留文末的参考来源]
+        [改写后的内容，保留文末的参考来源]
       `;
 
       const text = await callServerApi(systemPrompt, userPrompt);
@@ -168,8 +168,9 @@ const App = () => {
          setPosts(newPosts);
          setEditingIndex(null); 
          setCustomStyle("");
+         setLengthPreference('default');
       } else {
-        throw new Error("解析改写结果失败");
+        throw new Error("解析改写内容失败，请重试");
       }
     } catch (err: any) {
       alert("改写失败: " + err.message);
@@ -266,7 +267,7 @@ const App = () => {
             <textarea
               value={context}
               onChange={(e) => setContext(e.target.value)}
-              placeholder="例如：优先使用百度官方、国家反诈中心资料..."
+              placeholder="例如：优先使用百度官方资料、国家反诈中心指南..."
               rows={2}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 transition-all resize-none text-sm"
             />
@@ -289,10 +290,10 @@ const App = () => {
         <div className="grid md:grid-cols-2 gap-8 animate-fade-in">
           {posts.map((post, idx) => (
             <div key={idx} className="bg-white rounded-2xl shadow-md border border-slate-100 overflow-hidden flex flex-col group">
-              {/* Image with Direct Freepik Link */}
+              {/* Image */}
               <div className="relative h-56 bg-slate-200 overflow-hidden">
                  <img 
-                   src={`https://image.pollinations.ai/prompt/${encodeURIComponent(post.imageKeyword + " high quality photography clean background")}?width=800&height=500&nologo=true`} 
+                   src={`https://image.pollinations.ai/prompt/${encodeURIComponent(post.imageKeyword + " clean photography high definition")}?width=800&height=500&nologo=true`} 
                    alt={post.imageKeyword}
                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                  />
@@ -344,53 +345,88 @@ const App = () => {
                     ${editingIndex === idx ? 'bg-indigo-600 text-white' : 'text-indigo-600 hover:bg-white bg-slate-100'}`}
                 >
                   <LucideWand2 className="w-4 h-4" />
-                  {editingIndex === idx ? "取消改写" : "AI 改写文风"}
+                  {editingIndex === idx ? "关闭改写" : "AI 改写文风"}
                 </button>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => copyToClipboard(`${post.title}\n\n${post.content}`)}
-                    className="text-slate-400 hover:text-indigo-600 transition-colors p-2"
-                    title="复制全文"
-                  >
-                    <LucideCopy className="w-4 h-4" />
-                  </button>
-                </div>
+                <button
+                  onClick={() => copyToClipboard(`${post.title}\n\n${post.content}`)}
+                  className="text-slate-400 hover:text-indigo-600 transition-colors p-2"
+                  title="复制全文"
+                >
+                  <LucideCopy className="w-4 h-4" />
+                </button>
               </div>
 
-              {/* Rewrite UI */}
+              {/* Rewrite UI Panel */}
               {editingIndex === idx && (
-                <div className="p-4 bg-indigo-50/50 border-t border-indigo-100 animate-fade-in">
-                  <div className="mb-3">
-                    <p className="text-[10px] font-bold text-indigo-900 mb-2 uppercase opacity-60">选择改写风格</p>
+                <div className="p-5 bg-indigo-50/50 border-t border-indigo-100 animate-fade-in space-y-4">
+                  
+                  {/* Style Presets */}
+                  <div>
+                    <p className="text-[10px] font-bold text-indigo-900 mb-2 uppercase opacity-60">1. 选择改写风格</p>
                     <div className="flex flex-wrap gap-2 mb-3">
                       {REWRITE_PRESETS.map(p => (
                         <button 
                           key={p} 
                           onClick={() => setCustomStyle(p)}
-                          className={`text-[10px] px-2 py-1 rounded border transition-all ${customStyle === p ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-600 border-indigo-200'}`}
+                          className={`text-[10px] px-2 py-1 rounded border transition-all ${customStyle === p ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-indigo-600 border-indigo-200 hover:border-indigo-400'}`}
                         >
                           {p}
                         </button>
                       ))}
                     </div>
-                  </div>
-                  
-                  <div className="flex gap-2">
                     <input 
-                      className="flex-grow text-xs p-2 rounded border border-indigo-100 focus:ring-1 focus:ring-indigo-500 focus:outline-none" 
-                      placeholder="自定义描述风格，如：马斯克语录风..." 
+                      className="w-full text-xs p-2 rounded border border-indigo-100 focus:ring-1 focus:ring-indigo-500 focus:outline-none" 
+                      placeholder="或者手动输入风格描述..." 
                       value={customStyle}
                       onChange={(e) => setCustomStyle(e.target.value)}
                     />
-                    <button 
-                      onClick={() => handleRewrite(idx)}
-                      disabled={rewriting || !customStyle}
-                      className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-lg font-bold shadow-md disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {rewriting ? <LucideLoader2 className="w-3 h-3 animate-spin" /> : <LucideSparkles className="w-3 h-3" />}
-                      {rewriting ? "生成中" : "确认"}
-                    </button>
                   </div>
+
+                  {/* Length Control */}
+                  <div>
+                    <p className="text-[10px] font-bold text-indigo-900 mb-2 uppercase opacity-60">2. 篇幅长短调整</p>
+                    <div className="grid grid-cols-3 gap-2">
+                       <button
+                         onClick={() => setLengthPreference('default')}
+                         className={`py-2 rounded-lg text-xs font-bold flex flex-col items-center justify-center gap-1 border transition-all
+                           ${lengthPreference === 'default' 
+                             ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
+                             : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}
+                       >
+                         <LucideAlignJustify className="w-3 h-3" />
+                         保持原长
+                       </button>
+                       <button
+                         onClick={() => setLengthPreference('expand')}
+                         className={`py-2 rounded-lg text-xs font-bold flex flex-col items-center justify-center gap-1 border transition-all
+                           ${lengthPreference === 'expand' 
+                             ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
+                             : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}
+                       >
+                         <LucideMaximize2 className="w-3 h-3" />
+                         大幅增长
+                       </button>
+                       <button
+                         onClick={() => setLengthPreference('shorten')}
+                         className={`py-2 rounded-lg text-xs font-bold flex flex-col items-center justify-center gap-1 border transition-all
+                           ${lengthPreference === 'shorten' 
+                             ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
+                             : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}
+                       >
+                         <LucideMinimize2 className="w-3 h-3" />
+                         极简缩短
+                       </button>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => handleRewrite(idx)}
+                    disabled={rewriting || !customStyle}
+                    className="w-full bg-indigo-600 text-white text-xs py-3 rounded-xl font-bold shadow-lg shadow-indigo-200 disabled:opacity-50 flex items-center justify-center gap-2 transition-all transform active:scale-95"
+                  >
+                    {rewriting ? <LucideLoader2 className="w-4 h-4 animate-spin" /> : <LucideSparkles className="w-4 h-4" />}
+                    {rewriting ? "正在努力改写中..." : "确认改写并应用"}
+                  </button>
                 </div>
               )}
             </div>
