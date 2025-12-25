@@ -1,4 +1,9 @@
+
 import * as crypto from 'crypto';
+// Fix: Import Buffer to resolve 'Cannot find name Buffer' error in Node environment
+import { Buffer } from 'buffer';
+// Fix: Import GoogleGenAI from the official SDK
+import { GoogleGenAI } from "@google/genai";
 
 // Types for Vercel Serverless Functions
 type VercelRequest = any; 
@@ -112,28 +117,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // ------------------------------------------------------------------
         // Strategy 2: Google Gemini (Fallback)
         // ------------------------------------------------------------------
+        // Fix: Use the official @google/genai SDK instead of manual fetch.
+        // gemini-3-pro-preview is used for complex content creation tasks.
         const googleKey = process.env.API_KEY;
         if (googleKey) {
-             const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${googleKey}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: userPrompt }] }],
-                        systemInstruction: { parts: [{ text: systemPrompt }] },
-                        generationConfig: { temperature: 0.7 }
-                    })
-                }
-            );
-            const data = await response.json();
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const response = await ai.models.generateContent({
+                model: 'gemini-3-pro-preview',
+                contents: userPrompt,
+                config: {
+                    systemInstruction: systemPrompt,
+                    temperature: 0.7,
+                },
+            });
             
-            if (data.error) {
-                throw new Error(`Google API Error: ${data.error.message}`);
-            }
-            
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            return res.status(200).json({ text: text || "" });
+            return res.status(200).json({ text: response.text || "" });
         }
 
         // No keys configured
