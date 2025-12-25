@@ -82,38 +82,37 @@ const App = () => {
     try {
       const systemPrompt = `你是一名资深的深度内容主编。
 核心要求：
-1. 权威性：必须优先参考百度官方资料、国家政务平台或官方公告。信息必须准确无误，严禁胡编乱造。
+1. 权威性：必须优先参考百度官方资料、国家政务平台或官方公告。信息必须准确无误。
 2. 结构化：每篇文章末尾必须注明“参考来源”。
-3. 视觉：为每篇文章提供一个精准、最小化的英文搜索关键词，用于 Freepik 图片搜索。`;
+3. 禁止格式：严禁使用 LaTeX 数学公式符号（如 $$, \\begin{align} 等）。直接输出纯文本。
+4. 视觉：为每篇文章提供一个精准、最小化的英文搜索关键词，用于 Freepik 图片搜索。`;
       
       const userPrompt = `
         **任务定义:**
         1. 主题: "${topic}".
         2. 背景/侧重: "${context || "提供最准确、实用的官方指南。"}"。
-        3. **目标**: 生成 **4 (肆)** 篇视角独特的独立推文文章。
+        3. **目标**: 生成 **4 (肆)** 篇独立推文文章。
         
         **权威性与资料要求:**
         - 必须使用百度官方、政务平台等公信力数据。
-        - 确保数据、步骤、规定是真实的。
+        - 确保步骤和规定真实。
         - 结尾必须包含：参考来源：[官方资料名称]。
 
         **图片关键词策略 (IMAGE_KEYWORD):**
-        - 使用最小化、最直接、最贴切的英文单词（1-2个词）。
-        - 目标是能在 Freepik 搜到最精准的高质量配图。
-        - 例如：“清理内存” -> "mobile cleaning"; “社保” -> "social security"; “快递隐私” -> "parcel privacy".
+        - 使用最小化、最直接的英文单词（1-2个词）。
 
-        **输出格式要求 (严格执行):**
-        - 文章间分隔符: "---POST_DIVIDER---"。
-        - 必须使用标签: $$$TITLE$$$, $$$ANGLE$$$, $$$IMAGE_KEYWORD$$$, $$$CONTENT$$$。
-        - **严禁**加粗标签，**严禁**在标题或内容加方括号。
+        **输出格式要求 (必须包含标签):**
+        - 分隔符: "---POST_DIVIDER---"。
+        - 标签: $$$TITLE$$$, $$$ANGLE$$$, $$$IMAGE_KEYWORD$$$, $$$CONTENT$$$。
+        - **严禁**在内容中使用 $$ 或 align 等数学环境。
 
         **输出模版示例:**
-        $$$TITLE$$$ 文章标题
-        $$$ANGLE$$$ 深度科普
-        $$$IMAGE_KEYWORD$$$ simple keyword
+        $$$TITLE$$$ 标题内容
+        $$$ANGLE$$$ 风格标签
+        $$$IMAGE_KEYWORD$$$ keyword
         $$$CONTENT$$$
-        [文章正文...]
-        参考来源：百度官方、XXX政务网
+        文章内容...
+        参考来源：百度官方
         ---POST_DIVIDER---
       `;
 
@@ -140,24 +139,28 @@ const App = () => {
     const targetPost = posts[index];
 
     let lengthInstruction = "篇幅保持原样。";
-    if (lengthPreference === 'expand') lengthInstruction = "大幅扩充细节和案例，字数增加一倍以上（800-1000字）。";
-    else if (lengthPreference === 'shorten') lengthInstruction = "极度精简，只保留最核心的步骤和结论，字数控制在200字以内。";
+    if (lengthPreference === 'expand') lengthInstruction = "大幅扩充细节和案例（800-1000字）。";
+    else if (lengthPreference === 'shorten') lengthInstruction = "极度精简（200字以内）。";
 
     try {
-      const systemPrompt = "你是一名文案改写专家。在变换文风的同时，必须维持权威准确。特别注意：必须完整输出 $$$TITLE$$$, $$$ANGLE$$$, $$$IMAGE_KEYWORD$$$ 和 $$$CONTENT$$$ 标签，确保新标题被正确包含在 $$$TITLE$$$ 中。";
+      const systemPrompt = `你是一名文案改写专家。
+1. 严禁使用任何 LaTeX 或数学公式符号（禁止 $$, \\begin{align}, \\end{align} 等）。
+2. 必须以文本形式完整输出 $$$TITLE$$$ 标签。
+3. 确保输出内容的开头就是 $$$TITLE$$$ 标签，不要有任何前导说明。`;
+      
       const userPrompt = `
-        **任务**: 改写以下文章。
+        **任务**: 改写文章。
         **原标题**: ${targetPost.title}
         **原内容**: ${targetPost.content}
         **目标风格**: "${customStyle}"
-        **篇幅调整要求**: "${lengthInstruction}"
+        **篇幅要求**: "${lengthInstruction}"
         
-        **输出格式 (严格按此格式，不得缺失标签)**:
+        **输出格式要求**:
         $$$TITLE$$$ [新的吸引人的标题]
         $$$ANGLE$$$ [风格标签]
-        $$$IMAGE_KEYWORD$$$ [最简精准英文关键词]
+        $$$IMAGE_KEYWORD$$$ [1-2个最简英文关键词]
         $$$CONTENT$$$
-        [改写后的内容，保留文末的参考来源]
+        [改写后的正文内容，禁止使用数学公式符号，保留文末的参考来源]
       `;
 
       const text = await callServerApi(systemPrompt, userPrompt);
@@ -170,7 +173,7 @@ const App = () => {
          setCustomStyle("");
          setLengthPreference('default');
       } else {
-        throw new Error("解析改写内容失败，请重试");
+        throw new Error("解析失败。请确保 AI 输出了正确的标签。");
       }
     } catch (err: any) {
       alert("改写失败: " + err.message);
@@ -179,48 +182,69 @@ const App = () => {
     }
   };
 
-  // Helper: Improved Parser
+  // Helper: Improved Parser to handle bold tags and LaTeX noise
   const parseResponse = (text: string): GeneratedPost[] => {
-    const cleanText = text.replace(/```/g, ''); 
+    // 移除所有可能干扰解析的 Markdown 代码块标识和数学公式标记
+    const cleanText = text
+      .replace(/```[a-z]*\n?/gi, '')
+      .replace(/```/g, '')
+      .replace(/\$\$/g, '')
+      .replace(/\\begin\{[a-z]*\*?\}/gi, '')
+      .replace(/\\end\{[a-z]*\*?\}/gi, ''); 
+    
     const rawChunks = cleanText
       .split(/(?:---POST_DIVIDER---|(?:\r?\n|^)\s*[-*]{3,}\s*(?:\r?\n|$))/i)
-      .filter(p => p.trim().length > 30); 
+      .filter(p => p.trim().length > 20); 
     
     return rawChunks.map((raw) => {
+      // 提取函数：处理可选的加粗、括号和冒号
       const extract = (tag: string, fallbacks: string[]) => {
-        const strictRegex = new RegExp(`\\$\\$\\$${tag}\\$\\$\\$[\\*\\s:：]*(?:\\[)?(.*?)(?:\\])?(?:\\r?\\n|$)`, 'i');
-        const match = raw.match(strictRegex);
+        // 匹配模式：[可选加粗] $$$TAG$$$ [可选加粗] [可选冒号/空格] [内容]
+        const pattern = new RegExp(`(?:\\*\\*)?\\$\\$\\$${tag}\\$\\$\\$(?:\\*\\*)?[\\*\\s:：]*(?:\\[)?(.*?)(?:\\])?(?:\\r?\\n|$)`, 'i');
+        const match = raw.match(pattern);
         if (match && match[1].trim()) return match[1].trim();
 
+        // 备用匹配（防止 AI 漏掉 $$$）
         for (const f of fallbacks) {
-           const fbRegex = new RegExp(`(?:^|\\n)[\\*\\s]*${f}[:：]\\s*(?:\\[)?(.*?)(?:\\])?(?:\\r?\\n|$)`, 'i');
-           const fbMatch = raw.match(fbRegex);
+           const fbPattern = new RegExp(`(?:^|\\n)[\\*\\s]*${f}[\\*\\s:：]*(?:\\[)?(.*?)(?:\\])?(?:\\r?\\n|$)`, 'i');
+           const fbMatch = raw.match(fbPattern);
            if (fbMatch && fbMatch[1].trim()) return fbMatch[1].trim();
         }
         return null;
       };
 
-      const title = extract('TITLE', ['Title', '标题', 'New Title']) || "未命名标题";
-      const angle = extract('ANGLE', ['Angle', '角度', '风格']) || "实用干货";
-      const imageKeyword = extract('IMAGE_KEYWORD', ['Image', 'Keyword', '图片关键词']) || "clean background";
+      const title = extract('TITLE', ['Title', '标题', '新标题', '新标题内容']) || "爆款内容推文";
+      const angle = extract('ANGLE', ['Angle', '角度', '风格']) || "专家建议";
+      const imageKeyword = extract('IMAGE_KEYWORD', ['Image', 'Keyword', '关键词']) || "guide";
       
       let content = "";
-      const contentMarker = /\$\$\$CONTENT\$\$\$[:：]?/i;
-      const markerMatch = raw.match(contentMarker);
+      // 找到 CONTENT 标签后的所有内容
+      const contentPattern = /(?:\\*\\*)?\\$\\$\\$CONTENT\\$\\$\\$(?:\\*\\*)?[\\*\\s:：]*/i;
+      const markerMatch = raw.match(contentPattern);
+      
       if (markerMatch) {
          content = raw.substring(markerMatch.index! + markerMatch[0].length);
       } else {
+        // 如果没找到标签，尝试剔除已知的标签行
         content = raw
           .split('\n')
           .filter(l => !l.includes('$$$') && !l.toLowerCase().includes('title:') && !l.includes('标题:'))
           .join('\n');
       }
 
+      // 二次清理内容中的公式噪音
+      const finalizedContent = content
+        .replace(/\$\$/g, '')
+        .replace(/\\begin\{[a-z]*\*?\}/gi, '')
+        .replace(/\\end\{[a-z]*\*?\}/gi, '')
+        .replace(/\\[a-z]+\{.*?\}/gi, '') // 移除其他 LaTeX 指令
+        .trim();
+
       return {
         title,
         angle,
         imageKeyword,
-        content: content.replace(/\*\*/g, "").trim()
+        content: finalizedContent
       };
     });
   };
@@ -238,7 +262,7 @@ const App = () => {
         </h1>
         <p className="text-slate-500 text-lg max-w-2xl mx-auto flex items-center justify-center gap-2">
           <LucideShieldCheck className="w-5 h-5 text-emerald-500" />
-          <span>权威来源 · 官方核验 · 极简配图</span>
+          <span>权威来源 · 实时核验 · 精准改写</span>
         </p>
       </div>
 
@@ -254,7 +278,7 @@ const App = () => {
               type="text"
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
-              placeholder="例如：快递单隐私保护、手机清理内存..."
+              placeholder="例如：手机内存清理、反诈骗指南..."
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 transition-all text-lg"
             />
           </div>
@@ -262,12 +286,12 @@ const App = () => {
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
               <LucideInfo className="w-4 h-4 text-indigo-500" />
-              参考资料来源 (可选)
+              特别注明的资料源 (可选)
             </label>
             <textarea
               value={context}
               onChange={(e) => setContext(e.target.value)}
-              placeholder="例如：优先使用百度官方资料、国家反诈中心指南..."
+              placeholder="例如：强调保护隐私的法律依据..."
               rows={2}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 transition-all resize-none text-sm"
             />
@@ -280,7 +304,7 @@ const App = () => {
               ${loading || !topic.trim() ? 'bg-slate-300' : 'bg-gradient-to-r from-indigo-600 to-purple-600 shadow-lg shadow-indigo-100'}`}
           >
             {loading ? <LucideLoader2 className="w-6 h-6 animate-spin" /> : <LucideSparkles className="w-6 h-6" />}
-            {loading ? "正在调取官方资料..." : "一键生成 4 篇爆款推文"}
+            {loading ? "正在调取官方资料撰写中..." : "生成 4 篇爆款推文"}
           </button>
         </div>
       </div>
@@ -293,7 +317,7 @@ const App = () => {
               {/* Image */}
               <div className="relative h-56 bg-slate-200 overflow-hidden">
                  <img 
-                   src={`https://image.pollinations.ai/prompt/${encodeURIComponent(post.imageKeyword + " clean photography high definition")}?width=800&height=500&nologo=true`} 
+                   src={`https://image.pollinations.ai/prompt/${encodeURIComponent(post.imageKeyword + " high quality modern photography")}?width=800&height=500&nologo=true`} 
                    alt={post.imageKeyword}
                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                  />
@@ -305,12 +329,12 @@ const App = () => {
                       className="bg-white text-slate-800 px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 shadow-xl hover:bg-indigo-600 hover:text-white transition-all scale-90 group-hover:scale-100"
                     >
                       <LucideImage className="w-4 h-4" />
-                      去 Freepik 查找原图
+                      Freepik 精准搜图
                       <LucideExternalLink className="w-3 h-3" />
                     </a>
                  </div>
                  <div className="absolute bottom-2 left-2 flex gap-2">
-                    <span className="text-white text-[10px] bg-black/40 backdrop-blur-md px-2 py-1 rounded">搜索词: {post.imageKeyword}</span>
+                    <span className="text-white text-[10px] bg-black/40 backdrop-blur-md px-2 py-1 rounded">Search: {post.imageKeyword}</span>
                  </div>
               </div>
 
@@ -326,7 +350,7 @@ const App = () => {
                 </div>
                 <div className="flex items-center gap-2 text-emerald-600 text-[10px] font-bold">
                    <LucideShieldCheck className="w-3 h-3" />
-                   官方资料核验已完成
+                   官方权威核验已完成
                 </div>
               </div>
 
@@ -345,24 +369,21 @@ const App = () => {
                     ${editingIndex === idx ? 'bg-indigo-600 text-white' : 'text-indigo-600 hover:bg-white bg-slate-100'}`}
                 >
                   <LucideWand2 className="w-4 h-4" />
-                  {editingIndex === idx ? "关闭改写" : "AI 改写文风"}
+                  {editingIndex === idx ? "取消改写" : "AI 改写风格/篇幅"}
                 </button>
                 <button
                   onClick={() => copyToClipboard(`${post.title}\n\n${post.content}`)}
                   className="text-slate-400 hover:text-indigo-600 transition-colors p-2"
-                  title="复制全文"
                 >
                   <LucideCopy className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Rewrite UI Panel */}
+              {/* Rewrite UI */}
               {editingIndex === idx && (
                 <div className="p-5 bg-indigo-50/50 border-t border-indigo-100 animate-fade-in space-y-4">
-                  
-                  {/* Style Presets */}
                   <div>
-                    <p className="text-[10px] font-bold text-indigo-900 mb-2 uppercase opacity-60">1. 选择改写风格</p>
+                    <p className="text-[10px] font-bold text-indigo-900 mb-2 uppercase opacity-60">1. 改写风格</p>
                     <div className="flex flex-wrap gap-2 mb-3">
                       {REWRITE_PRESETS.map(p => (
                         <button 
@@ -375,23 +396,20 @@ const App = () => {
                       ))}
                     </div>
                     <input 
-                      className="w-full text-xs p-2 rounded border border-indigo-100 focus:ring-1 focus:ring-indigo-500 focus:outline-none" 
-                      placeholder="或者手动输入风格描述..." 
+                      className="w-full text-xs p-2 rounded border border-indigo-100 focus:ring-1 focus:ring-indigo-500 outline-none" 
+                      placeholder="手动描述风格..." 
                       value={customStyle}
                       onChange={(e) => setCustomStyle(e.target.value)}
                     />
                   </div>
 
-                  {/* Length Control */}
                   <div>
-                    <p className="text-[10px] font-bold text-indigo-900 mb-2 uppercase opacity-60">2. 篇幅长短调整</p>
+                    <p className="text-[10px] font-bold text-indigo-900 mb-2 uppercase opacity-60">2. 篇幅长短</p>
                     <div className="grid grid-cols-3 gap-2">
                        <button
                          onClick={() => setLengthPreference('default')}
                          className={`py-2 rounded-lg text-xs font-bold flex flex-col items-center justify-center gap-1 border transition-all
-                           ${lengthPreference === 'default' 
-                             ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
-                             : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}
+                           ${lengthPreference === 'default' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}
                        >
                          <LucideAlignJustify className="w-3 h-3" />
                          保持原长
@@ -399,9 +417,7 @@ const App = () => {
                        <button
                          onClick={() => setLengthPreference('expand')}
                          className={`py-2 rounded-lg text-xs font-bold flex flex-col items-center justify-center gap-1 border transition-all
-                           ${lengthPreference === 'expand' 
-                             ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
-                             : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}
+                           ${lengthPreference === 'expand' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}
                        >
                          <LucideMaximize2 className="w-3 h-3" />
                          大幅增长
@@ -409,9 +425,7 @@ const App = () => {
                        <button
                          onClick={() => setLengthPreference('shorten')}
                          className={`py-2 rounded-lg text-xs font-bold flex flex-col items-center justify-center gap-1 border transition-all
-                           ${lengthPreference === 'shorten' 
-                             ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
-                             : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}
+                           ${lengthPreference === 'shorten' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}
                        >
                          <LucideMinimize2 className="w-3 h-3" />
                          极简缩短
@@ -422,10 +436,10 @@ const App = () => {
                   <button 
                     onClick={() => handleRewrite(idx)}
                     disabled={rewriting || !customStyle}
-                    className="w-full bg-indigo-600 text-white text-xs py-3 rounded-xl font-bold shadow-lg shadow-indigo-200 disabled:opacity-50 flex items-center justify-center gap-2 transition-all transform active:scale-95"
+                    className="w-full bg-indigo-600 text-white text-xs py-3 rounded-xl font-bold shadow-lg disabled:opacity-50 flex items-center justify-center gap-2 transform active:scale-95 transition-all"
                   >
                     {rewriting ? <LucideLoader2 className="w-4 h-4 animate-spin" /> : <LucideSparkles className="w-4 h-4" />}
-                    {rewriting ? "正在努力改写中..." : "确认改写并应用"}
+                    {rewriting ? "正在努力重新撰写..." : "确认改写"}
                   </button>
                 </div>
               )}
@@ -437,7 +451,7 @@ const App = () => {
       {/* Footer Info */}
       <div className="mt-20 border-t border-slate-200 pt-8 text-center text-slate-400">
         <p className="text-xs">
-          数据采集自百度官方公开资料 · 配图索引由 Freepik 提供 · AI 引擎驱动
+          数据来源于百度公开资料 · 配图索引由 Freepik 提供 · TrendWeaver 内容实验室
         </p>
       </div>
     </div>
