@@ -97,7 +97,7 @@ const App = () => {
 4. 使用 ---POST_DIVIDER--- 作为文章之间的唯一分隔符。`;
       
       const userPrompt = `
-        主题: "${topic}"。背景倾向: "${context || "权威实用的官方指南"}"。
+        主题: "${topic}"。侧重点/背景资料: "${context || "权威实用的官方指南"}"。
         请参考以下参考链接的风格特征（权威、深度、实用）：https://nutty.qq.com/nutty/ssr/26692.html 等。
         
         输出示例格式：
@@ -191,12 +191,12 @@ const App = () => {
         
         <div className="space-y-4">
           <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
-            <LucideInfo className="w-4 h-4 text-indigo-500" /> 背景或特定参考
+            <LucideInfo className="w-4 h-4 text-indigo-500" /> 侧重点 / 背景资料
           </label>
           <textarea
             value={context}
             onChange={(e) => setContext(e.target.value)}
-            placeholder="例如：优先参考百度官方权威指南..."
+            placeholder="例如：强调保护隐私的重要性、或补充特定官方参考来源..."
             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 resize-none h-20 outline-none transition-all"
           />
         </div>
