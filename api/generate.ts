@@ -56,10 +56,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     { Role: "system", Content: systemPrompt || "你是一名资深的深度内容主编。" },
                     { Role: "user", Content: userPrompt }
                 ],
-                // 移除 Temperature 避免部分环境下的浮点数类型校验失败
-                SearchInfo: {
-                    Enable: true
-                }
+                // 修复：根据报错信息，SearchInfo 应直接为布尔值
+                SearchInfo: true
             };
             const payload = JSON.stringify(payloadObj);
 
