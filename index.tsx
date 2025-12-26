@@ -222,9 +222,15 @@ const App = () => {
                  className="w-full h-full object-cover"
                  alt={post.imageKeyword}
                />
-               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
-                  <a href={`https://www.freepik.com/search?query=${encodeURIComponent(post.imageKeyword)}`} target="_blank" className="bg-white px-5 py-2.5 rounded-full font-bold text-sm flex items-center gap-2 shadow-xl hover:scale-105 transition-transform">
-                    <LucideImage className="w-4 h-4" /> Freepik 搜同款
+               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex flex-col items-center justify-center gap-2">
+                  <a href={`https://www.freepik.com/search?query=${encodeURIComponent(post.imageKeyword)}`} target="_blank" className="bg-white px-4 py-1.5 rounded-full font-bold text-[11px] flex items-center gap-2 shadow-xl hover:scale-105 transition-transform w-36">
+                    <LucideImage className="w-3.5 h-3.5" /> Freepik 搜同款
+                  </a>
+                  <a href={`https://www.pexels.com/search/${encodeURIComponent(post.imageKeyword)}/`} target="_blank" className="bg-white px-4 py-1.5 rounded-full font-bold text-[11px] flex items-center gap-2 shadow-xl hover:scale-105 transition-transform w-36">
+                    <LucideImage className="w-3.5 h-3.5" /> Pexels 搜图
+                  </a>
+                  <a href={`https://pixabay.com/images/search/${encodeURIComponent(post.imageKeyword)}/`} target="_blank" className="bg-white px-4 py-1.5 rounded-full font-bold text-[11px] flex items-center gap-2 shadow-xl hover:scale-105 transition-transform w-36">
+                    <LucideImage className="w-3.5 h-3.5" /> Pixabay 搜图
                   </a>
                </div>
                <div className="absolute bottom-3 left-3 text-[10px] font-mono bg-black/40 text-white px-2 py-1 rounded backdrop-blur-sm">
