@@ -4,8 +4,7 @@ import {
   LucideSparkles, LucideCopy, LucideSearch, LucideBookOpen, 
   LucideLoader2, LucideWand2, LucideX, LucideImage, 
   LucideExternalLink, LucideMaximize2, LucideMinimize2, 
-  LucideAlignJustify, LucideCloud, LucideShieldCheck, LucideInfo,
-  LucideType
+  LucideAlignJustify, LucideCloud, LucideShieldCheck, LucideInfo
 } from "lucide-react";
 
 // --- Types ---
@@ -284,8 +283,8 @@ const App = () => {
             {editingIndex === idx && (
               <div className="p-5 bg-indigo-50 border-t space-y-4 animate-fade-in">
                 <div className="space-y-2">
-                  <p className="text-[10px] font-bold text-indigo-900/60 uppercase">1. 文风预设与自定义</p>
-                  <div className="flex flex-wrap gap-2 mb-3">
+                  <p className="text-[10px] font-bold text-indigo-900/60 uppercase">1. 文风预设</p>
+                  <div className="flex flex-wrap gap-2">
                     {REWRITE_PRESETS.map(p => (
                       <button 
                         key={p} 
@@ -295,16 +294,6 @@ const App = () => {
                         {p}
                       </button>
                     ))}
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={customStyle}
-                      onChange={(e) => setCustomStyle(e.target.value)}
-                      placeholder="或者手动输入你想要的风格（如：严肃学术、翻译腔...）"
-                      className="w-full pl-9 pr-4 py-2 bg-white border border-indigo-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-400 transition-all text-slate-700"
-                    />
-                    <LucideType className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400" />
                   </div>
                 </div>
 
