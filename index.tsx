@@ -25,6 +25,29 @@ const REWRITE_PRESETS = [
   "温柔邻家"
 ];
 
+// --- Helper: Linkify text content ---
+const LinkifiedText = ({ text }: { text: string }) => {
+  const urlRegex = /(https?:\/\/[^\s\n\r]+)/g;
+  const parts = text.split(urlRegex);
+  return (
+    <>
+      {parts.map((part, i) => 
+        urlRegex.test(part) ? (
+          <a 
+            key={i} 
+            href={part} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="text-indigo-600 hover:text-indigo-800 underline break-all font-medium"
+          >
+            {part}
+          </a>
+        ) : part
+      )}
+    </>
+  );
+};
+
 // --- API Helper ---
 async function callServerApi(systemPrompt: string, userPrompt: string) {
   try {
@@ -96,13 +119,14 @@ const App = () => {
 2. 每篇文章必须且仅能包含以下标签：$$$TITLE$$$, $$$ANGLE$$$, $$$IMAGE_KEYWORD$$$, $$$CONTENT$$$。
 3. 严禁在 $$$CONTENT$$$ 内部重复出现标签名称。
 4. 使用 ---POST_DIVIDER--- 作为文章之间的唯一分隔符。
-5. 重要排版：文章正文结束后的“参考来源”必须另起一行，并与正文内容之间保留至少一个空行。`;
+5. 重要排版：文章正文结束后的“参考来源”必须另起一行，并与正文内容之间保留至少一个空行。每个来源必须列出具体的网页标题，并附带其对应的完整 URL 链接（如：标题 - https://...）。`;
       
       const userPrompt = `
         主题: "${topic}"。
         侧重点/背景资料: "${context || "权威实用的官方指南"}"。
         
         请务必利用联网搜索，结合该主题下的最新热点动态进行创作。
+        在每篇文章末尾的“参考来源”中，必须贴上具体的、真实的完整 URL 链接。
         
         输出示例格式：
         $$$TITLE$$$ 爆款文章标题
@@ -111,7 +135,9 @@ const App = () => {
         $$$CONTENT$$$
         [文章正文内容]
 
-        参考来源：[具体的联网搜索参考来源信息]
+        参考来源：
+        1. [网页标题1] - [完整 URL 1]
+        2. [网页标题2] - [完整 URL 2]
         ---POST_DIVIDER---
       `;
 
@@ -134,7 +160,7 @@ const App = () => {
     try {
       const systemPrompt = `文案改写专家。请根据目标风格和篇幅要求，结合联网搜索的最新语境改写内容。
 必须严格输出以下标签且不得在正文内重复显示标签名：$$$TITLE$$$, $$$ANGLE$$$, $$$IMAGE_KEYWORD$$$, $$$CONTENT$$$。
-重要排版规则：文章末尾的“参考来源”必须另起一行，并与其上方的正文内容保留空行。`;
+重要排版规则：文章末尾的“参考来源”必须另起一行，并与其上方的正文内容保留空行。每个来源必须提供对应的真实且完整的 URL 链接。`;
       
       const userPrompt = `
         原文章: ${targetPost.title}
@@ -149,7 +175,7 @@ const App = () => {
         $$$CONTENT$$$
         [改写后的正文内容]
 
-        参考来源：[保留或根据最新搜索更新参考来源]
+        参考来源：[保留或根据最新搜索更新参考来源，务必包含具体的网页标题和完整 URL 链接]
       `;
 
       const text = await callServerApi(systemPrompt, userPrompt);
@@ -265,7 +291,7 @@ const App = () => {
             {/* Clean Content Area */}
             <div className="p-6 flex-grow">
               <div className="prose prose-slate max-w-none whitespace-pre-wrap text-slate-600 text-sm leading-relaxed">
-                {post.content}
+                <LinkifiedText text={post.content} />
               </div>
             </div>
 
