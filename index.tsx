@@ -94,7 +94,8 @@ const App = () => {
 1. 严禁使用任何 LaTeX 数学符号（禁止 $$, \\begin 等）。
 2. 每篇文章必须且仅能包含以下标签：$$$TITLE$$$, $$$ANGLE$$$, $$$IMAGE_KEYWORD$$$, $$$CONTENT$$$。
 3. 严禁在 $$$CONTENT$$$ 内部重复出现标签名称。
-4. 使用 ---POST_DIVIDER--- 作为文章之间的唯一分隔符。`;
+4. 使用 ---POST_DIVIDER--- 作为文章之间的唯一分隔符。
+5. 文章正文结束后的“参考来源”必须另起一行，并与正文内容之间保留至少一个空行。`;
       
       const userPrompt = `
         主题: "${topic}"。侧重点/背景资料: "${context || "权威实用的官方指南"}"。
@@ -105,7 +106,9 @@ const App = () => {
         $$$ANGLE$$$ 深度科普
         $$$IMAGE_KEYWORD$$$ 1-2个英文搜索词
         $$$CONTENT$$$
-        [文章正文内容，末尾必须包含参考来源]
+        [文章正文内容]
+
+        参考来源：[具体的参考来源信息]
         ---POST_DIVIDER---
       `;
 
@@ -127,7 +130,8 @@ const App = () => {
 
     try {
       const systemPrompt = `文案改写专家。请根据目标风格和篇幅要求改写内容。
-必须严格输出以下标签且不得在正文内重复显示标签名：$$$TITLE$$$, $$$ANGLE$$$, $$$IMAGE_KEYWORD$$$, $$$CONTENT$$$。`;
+必须严格输出以下标签且不得在正文内重复显示标签名：$$$TITLE$$$, $$$ANGLE$$$, $$$IMAGE_KEYWORD$$$, $$$CONTENT$$$。
+重要排版规则：文章末尾的“参考来源”必须另起一行，并与其上方的正文内容保留空行。`;
       
       const userPrompt = `
         原文章: ${targetPost.title}
@@ -141,6 +145,8 @@ const App = () => {
         $$$IMAGE_KEYWORD$$$ [最简英文词]
         $$$CONTENT$$$
         [改写后的正文内容]
+
+        参考来源：[保留或更新后的参考来源]
       `;
 
       const text = await callServerApi(systemPrompt, userPrompt);
