@@ -12,15 +12,9 @@ type VercelResponse = any;
 // Tencent Cloud Configuration
 const TENCENT_HOST = "hunyuan.tencentcloudapi.com";
 const TENCENT_SERVICE = "hunyuan";
-const TENCENT_REGION = "ap-guangzhou"; // Default region
+const TENCENT_REGION = "ap-guangzhou"; 
 const TENCENT_ACTION = "ChatCompletions";
 const TENCENT_VERSION = "2023-09-01";
-
-// Helper: SHA256 Helper
-function sha256(message: string, secret: string | Buffer = ''): string {
-    const hmac = crypto.createHmac('sha256', secret);
-    return hmac.update(message).digest('hex');
-}
 
 // Helper: Hash
 function getHash(message: string): string {
@@ -46,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const { systemPrompt, userPrompt } = req.body;
         
         // ------------------------------------------------------------------
-        // Strategy 1: Tencent Cloud Hunyuan (Priority if env vars exist)
+        // Strategy 1: Tencent Cloud Hunyuan
         // ------------------------------------------------------------------
         const secretId = process.env.TENCENT_SECRET_ID;
         const secretKey = process.env.TENCENT_SECRET_KEY;
@@ -55,14 +49,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const timestamp = Math.floor(Date.now() / 1000);
             const date = getDate(timestamp);
 
+            // 严格遵循腾讯云 V3 协议的 JSON 类型要求
             const payloadObj = {
                 Model: "hunyuan-pro",
                 Messages: [
-                    { Role: "system", Content: systemPrompt },
+                    { Role: "system", Content: systemPrompt || "你是一名资深的深度内容主编。" },
                     { Role: "user", Content: userPrompt }
                 ],
-                Temperature: 0.7,
-                // Enable web search to get real-time hot topics and precise info
+                // 移除 Temperature 避免部分环境下的浮点数类型校验失败
                 SearchInfo: {
                     Enable: true
                 }
@@ -70,28 +64,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const payload = JSON.stringify(payloadObj);
 
             // --- Tencent Cloud V3 Signature Process ---
-            
-            // 1. Canonical Request
             const hashedPayload = getHash(payload);
             const canonicalHeaders = `content-type:application/json\nhost:${TENCENT_HOST}\n`;
             const signedHeaders = "content-type;host";
             const canonicalRequest = `POST\n/\n\n${canonicalHeaders}\n${signedHeaders}\n${hashedPayload}`;
 
-            // 2. String to Sign
             const credentialScope = `${date}/${TENCENT_SERVICE}/tc3_request`;
             const hashedCanonicalRequest = getHash(canonicalRequest);
             const stringToSign = `TC3-HMAC-SHA256\n${timestamp}\n${credentialScope}\n${hashedCanonicalRequest}`;
 
-            // 3. Signature
             const secretDate = crypto.createHmac('sha256', "TC3" + secretKey).update(date).digest();
             const secretService = crypto.createHmac('sha256', secretDate).update(TENCENT_SERVICE).digest();
             const secretSigning = crypto.createHmac('sha256', secretService).update("tc3_request").digest();
             const signature = crypto.createHmac('sha256', secretSigning).update(stringToSign).digest('hex');
 
-            // 4. Authorization Header
             const authorization = `TC3-HMAC-SHA256 Credential=${secretId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
-            // Call Tencent API
             const response = await fetch(`https://${TENCENT_HOST}/`, {
                 method: "POST",
                 headers: {
@@ -129,14 +117,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 contents: userPrompt,
                 config: {
                     systemInstruction: systemPrompt,
-                    temperature: 0.7,
                 },
             });
             
             return res.status(200).json({ text: response.text || "" });
         }
 
-        throw new Error("Server Error: No API keys configured. Please set TENCENT_SECRET_ID/KEY or API_KEY in Vercel.");
+        throw new Error("服务器配置错误: 未设置腾讯云或 Google API 密钥。");
 
     } catch (error: any) {
         console.error("API Error:", error);
