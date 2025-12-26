@@ -61,7 +61,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     { Role: "system", Content: systemPrompt },
                     { Role: "user", Content: userPrompt }
                 ],
-                Temperature: 0.7
+                Temperature: 0.7,
+                // Enable web search to get real-time hot topics and precise info
+                SearchInfo: {
+                    Enable: true
+                }
             };
             const payload = JSON.stringify(payloadObj);
 
@@ -117,8 +121,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // ------------------------------------------------------------------
         // Strategy 2: Google Gemini (Fallback)
         // ------------------------------------------------------------------
-        // Fix: Use the official @google/genai SDK instead of manual fetch.
-        // gemini-3-pro-preview is used for complex content creation tasks.
         const googleKey = process.env.API_KEY;
         if (googleKey) {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -134,7 +136,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return res.status(200).json({ text: response.text || "" });
         }
 
-        // No keys configured
         throw new Error("Server Error: No API keys configured. Please set TENCENT_SECRET_ID/KEY or API_KEY in Vercel.");
 
     } catch (error: any) {
