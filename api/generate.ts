@@ -1,3 +1,4 @@
+
 import * as crypto from 'crypto';
 // Fix: Import Buffer to resolve 'Cannot find name Buffer' error in Node environment
 import { Buffer } from 'buffer';
@@ -48,18 +49,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const timestamp = Math.floor(Date.now() / 1000);
             const date = getDate(timestamp);
 
+            // 严格遵循腾讯云 V3 协议的 JSON 类型要求
             const payloadObj = {
                 Model: "hunyuan-pro",
                 Messages: [
-                    { Role: "system", Content: systemPrompt || "你是一名资深的内容编辑。" },
+                    { Role: "system", Content: systemPrompt || "你是一名资深的深度内容主编。" },
                     { Role: "user", Content: userPrompt }
                 ],
-                // 开启联网搜索
+                // 修复：根据报错信息，SearchInfo 应直接为布尔值
                 SearchInfo: true
             };
             const payload = JSON.stringify(payloadObj);
 
-            // --- Signature V3 ---
+            // --- Tencent Cloud V3 Signature Process ---
             const hashedPayload = getHash(payload);
             const canonicalHeaders = `content-type:application/json\nhost:${TENCENT_HOST}\n`;
             const signedHeaders = "content-type;host";
@@ -93,28 +95,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const data = await response.json();
             
             if (data.Response && data.Response.Error) {
-                throw new Error(`Tencent API Error: ${data.Response.Error.Message}`);
+                throw new Error(`腾讯云报错: ${data.Response.Error.Message} (${data.Response.Error.Code})`);
             }
 
             const text = data.Response?.Choices?.[0]?.Message?.Content;
-            return res.status(200).json({ text: text || "" });
+            if (!text) throw new Error("腾讯云返回内容为空");
+
+            return res.status(200).json({ text });
         }
         
         // ------------------------------------------------------------------
-        // Strategy 2: Fallback (Gemini)
+        // Strategy 2: Google Gemini (Fallback)
         // ------------------------------------------------------------------
         const googleKey = process.env.API_KEY;
         if (googleKey) {
-            const ai = new GoogleGenAI({ apiKey: googleKey });
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const response = await ai.models.generateContent({
                 model: 'gemini-3-pro-preview',
                 contents: userPrompt,
-                config: { systemInstruction: systemPrompt },
+                config: {
+                    systemInstruction: systemPrompt,
+                },
             });
+            
             return res.status(200).json({ text: response.text || "" });
         }
 
-        throw new Error("No API Keys configured.");
+        throw new Error("服务器配置错误: 未设置腾讯云或 Google API 密钥。");
 
     } catch (error: any) {
         console.error("API Error:", error);
