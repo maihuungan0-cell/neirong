@@ -145,13 +145,14 @@ const App = () => {
 1. 禁止 Markdown 符号：标题和正文中绝对严禁出现 * 或 #。
 2. 禁幻觉链接：所有 URL 必须真实有效。
 3. 真实引用：正文事实处使用 [1], [2] 标注，并在文末提供【参考来源】真实链接。
-4. 四篇文章：必须生成 4 篇内容和切入点完全不同的文章，每篇之间用 ---POST_DIVIDER--- 分隔。
+4. 四篇文章：必须生成 4 篇内容和切入点完全不同的文章，每篇之间用 ---POST_DIVIDER--- 分隔，不要合并。
 5. 图片关键词：必须给出一个极其精准的英文单词或短语，用于在 Freepik、Pixabay 等网站搜索素材。
 6. 结构：每篇包含 $$$TITLE$$$, $$$ANGLE$$$, $$$IMAGE_KEYWORD$$$, $$$CONTENT$$$。`;
       
       const userPrompt = `
         主题: "${topic}"。背景要求: "${context}"。
         请执行联网搜索，生成 4 篇独立的深度爆款推文。
+        每篇正文结束后，需列出【参考来源】并附上真实的真实 URL。
         ---POST_DIVIDER---
       `;
 
@@ -391,7 +392,7 @@ const App = () => {
         </div>
         <p className="text-[10px] text-slate-400 tracking-[0.3em] uppercase mb-1">TrendWeaver Editorial Engine</p>
         <p className="text-xs text-slate-400 font-medium">
-          联网能力由腾讯混元 Pro 提供 · 全球三大图库一键检索 · 纯净文本排版
+          联网能力由腾讯混元 Pro 提供 · 三大图库一键检索 · 纯净文本排版
         </p>
       </div>
     </div>
