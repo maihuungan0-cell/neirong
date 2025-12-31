@@ -139,7 +139,11 @@ const App = () => {
     setPosts([]);
     try {
       const systemPrompt = `你是一名拥有高级联网搜索能力的深度主编。
-你当前已开启腾讯混元 Pro 联网搜索模式。必须检索关于 "${topic}" 的最新实时信息、官方通报和真实网页 URL。
+你当前已开启腾讯混元 Pro 联网搜索模式。必须检索关于 "${topic}" 的最新实时信息、官方通报和真实网页 URL生成真实、深入的内容。。
+
+【任务量核心指标】：
+你本次的任务是：针对同一主题生成【4 篇】完全不同的推文文章。
+每篇文章必须有独立的切入点（例如：实时资讯篇、深度科普篇、避雷指南篇、未来预测篇）。
 
 【严苛任务规范】：
 1. **必须生成 4 篇文章**：严格输出 4 篇完全独立的推文。严禁只生成一篇。
@@ -148,13 +152,45 @@ const App = () => {
 4.5. 图片关键词：必须给出一个极其精准的英文单词或短语，用于在 Freepik、Pixabay 等网站搜索素材。
 5. **禁幻觉链接**：所有 URL 必须真实有效且来源于搜索结果。
 6. **结构**：每篇必须包含且仅包含 $$$TITLE$$$, $$$ANGLE$$$, $$$IMAGE_KEYWORD$$$, $$$CONTENT$$$ 标签。`;
+
       
       const userPrompt = `
         主题: "${topic}"。背景要求: "${context}"。
-        请执行联网搜索并立即撰写 4 篇内容切入点完全不同的爆款推文。确保生成数量正好为 4 篇。
-        每篇推文末尾必须清晰列出【参考来源】，包含：[序号] 网页标题 - 真实URL链接。
+        请执行联网搜索并立即撰写 4 篇内容切入点完全不同的爆款推文。严格执行 4 篇文章的配额任务。
+        
         
         输出格式：
+        第 1 篇
+        $$$TITLE$$$ 文章标题
+        $$$ANGLE$$$ 视角标签
+        $$$IMAGE_KEYWORD$$$ 图片关键词
+        $$$CONTENT$$$
+        [正文，带[1][2]引用]
+
+        参考来源：
+        [1] 标题 - 真实URL
+        ---POST_DIVIDER---
+        第 2 篇
+        $$$TITLE$$$ 文章标题
+        $$$ANGLE$$$ 视角标签
+        $$$IMAGE_KEYWORD$$$ 图片关键词
+        $$$CONTENT$$$
+        [正文，带[1][2]引用]
+
+        参考来源：
+        [1] 标题 - 真实URL
+        ---POST_DIVIDER---
+        第 3 篇
+        $$$TITLE$$$ 文章标题
+        $$$ANGLE$$$ 视角标签
+        $$$IMAGE_KEYWORD$$$ 图片关键词
+        $$$CONTENT$$$
+        [正文，带[1][2]引用]
+
+        参考来源：
+        [1] 标题 - 真实URL
+        ---POST_DIVIDER---
+        第 4 篇
         $$$TITLE$$$ 文章标题
         $$$ANGLE$$$ 视角标签
         $$$IMAGE_KEYWORD$$$ 图片关键词
@@ -228,7 +264,7 @@ const App = () => {
             type="text"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="如：2025热播剧、如何清理手机内存、最新科技趋势..."
+            placeholder="如：如何防范快递单诈骗、如何清理手机内存、最新科技趋势..."
             className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 text-lg font-medium outline-none transition-all placeholder:text-slate-300"
           />
         </div>
@@ -240,7 +276,7 @@ const App = () => {
           <textarea
             value={context}
             onChange={(e) => setContext(e.target.value)}
-            placeholder="可选：补充特定的要求（如：只需要2024年以后的进展、强调隐私保护等）"
+            placeholder="可选：补充特定的要求（如：针对大学生群体、强调隐私保护等）"
             className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 resize-none h-24 outline-none transition-all placeholder:text-slate-300"
           />
         </div>
