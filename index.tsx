@@ -108,9 +108,17 @@ const App = () => {
 
   const parseResponse = (text: string): GeneratedPost[] => {
     let clean = text.replace(/```[a-z]*\n?/gi, '').replace(/```/g, '');
-    const chunks = clean.split('---POST_DIVIDER---').filter(c => c.trim().length > 20);
     
-    return chunks.map(chunk => {
+    // 逻辑 A: 尝试标准分割
+    let chunks = clean.split(/---POST_DIVIDER---/i).map(c => c.trim()).filter(c => c.length > 50);
+    
+    // 逻辑 B: 若分割失败，按 TITLE 强行切分 4 份
+    if (chunks.length <= 1) {
+      const parts = clean.split(/\$\$\$TITLE\$\$\$/i).filter(p => p.trim().length > 30);
+      chunks = parts.map(p => "$$$TITLE$$$" + p);
+    }
+    
+    return chunks.slice(0, 4).map(chunk => {
       const extractField = (tagName: string) => {
         const startTag = `$$$${tagName}$$$`;
         const startIndex = chunk.indexOf(startTag);
@@ -118,18 +126,19 @@ const App = () => {
         const contentStart = startIndex + startTag.length;
         const nextTagMatch = chunk.slice(contentStart).match(/\$\$\$\w+\$\$\$/);
         const endIndex = nextTagMatch ? contentStart + nextTagMatch.index! : chunk.length;
+        
         return chunk.substring(contentStart, endIndex)
-          .replace(/^[\s:：]+/, '')
-          .replace(/[*#]/g, '') // 彻底移除标题和内容中的星号和井号
+          .replace(/^[\s:：=]+/, '')
+          .replace(/[*#]/g, '')
           .trim();
       };
 
-      const title = extractField('TITLE') || "爆款内容";
-      const angle = extractField('ANGLE') || "实时观察";
-      const imageKeyword = extractField('IMAGE_KEYWORD') || "tech news";
-      const content = extractField('CONTENT') || chunk.replace(/[*#]/g, '');
-
-      return { title, angle, imageKeyword, content };
+      return {
+        title: extractField('TITLE') || "精选深度内容",
+        angle: extractField('ANGLE') || "趋势透视",
+        imageKeyword: extractField('IMAGE_KEYWORD') || "professional",
+        content: extractField('CONTENT') || chunk.replace(/[*#]/g, '')
+      };
     });
   };
 
@@ -138,77 +147,42 @@ const App = () => {
     setLoading(true);
     setPosts([]);
     try {
-      const systemPrompt = `你是一名拥有高级联网搜索能力的深度主编。
-你当前已开启腾讯混元 Pro 联网搜索模式。必须检索关于 "${topic}" 的最新实时信息、官方通报和真实网页 URL生成真实、深入的内容。。
+      const systemPrompt = `你是一名拥有极强深度思考与联网分析能力的资深主编。
+你的任务是参考腾讯 Nutty (SSR) 平台内容的编辑逻辑：结构化、逻辑严谨、包含真实参考源。
 
-【任务量核心指标】：
-你本次的任务是：针对同一主题生成【4 篇】完全不同的推文文章，每篇文章600字左右。
-每篇文章必须有独立的切入点（例如：实时资讯篇、深度科普篇、避雷指南篇、未来预测篇）。
+【生成指标】：
+你必须一次性生成且仅生成 4 篇完全独立的深度推文。严禁只写 1 篇，严禁合并。
 
-【严苛任务规范】：
-1. **必须生成 4 篇文章**：严格输出 4 篇完全独立的推文。严禁只生成一篇。
-2. **强制分隔符**：每篇文章之间必须且只能使用 ---POST_DIVIDER--- 作为分隔符。
-3. **禁止 Markdown 符号**：标题和正文中绝对严禁出现 * 或 # 等排版符号。
-4.5. 图片关键词：必须给出一个极其精准的英文单词或短语，用于在 Freepik、Pixabay 等网站搜索素材。
-5. **禁幻觉链接**：所有 URL 必须真实有效且来源于搜索结果。
-6. **结构**：1. [标题]：直击痛点，如《如何彻底防范...》、《2025年最新趋势...》
+【Nutty 深度内容参考模版】：
+每一篇文章必须包含以下结构：
+1. [标题]：直击痛点，如《如何彻底防范...》、《2025年最新趋势...》
 2. [背景摘要]：100字以内的引言。
 3. [核心要点]：使用 1. 2. 3. 序号清晰陈述事实或步骤。
 4. [深度分析/对策]：提供专业建议或避雷指南。
-5. [参考源]：必须包含 [1] 引用标记，并附上真实 URL。`;
+5. [参考源]：必须包含 [1] 引用标记，并附上真实 URL。
 
+【输出控制】：
+严格重复以下结构 4 次，每篇之间必须用 ---POST_DIVIDER--- 隔开：
+
+$$$TITLE$$$ 文章标题
+$$$ANGLE$$$ 切入视角（如：防骗视角、技术视角等）
+$$$IMAGE_KEYWORD$$$ 1-2个极其精准的英文名词
+$$$CONTENT$$$ 文章正文内容（禁止使用 * 或 # 符号，保持纯净排版）
+【参考来源】
+1. 真实链接地址
+---POST_DIVIDER---`;
       
       const userPrompt = `
-        主题: "${topic}"。背景要求: "${context}"。
-        请执行联网搜索并立即撰写 4 篇内容切入点完全不同的爆款推文。严格执行 4 篇文章的配额任务。
-        
-        
-        输出格式：
-        第 1 篇
-        $$$TITLE$$$ 文章标题
-        $$$ANGLE$$$ 视角标签
-        $$$IMAGE_KEYWORD$$$ 图片关键词
-        $$$CONTENT$$$
-        [正文，带[1][2]引用]
-
-        参考来源：
-        [1] 标题 - 真实URL
-        ---POST_DIVIDER---
-        第 2 篇
-        $$$TITLE$$$ 文章标题
-        $$$ANGLE$$$ 视角标签
-        $$$IMAGE_KEYWORD$$$ 图片关键词
-        $$$CONTENT$$$
-        [正文，带[1][2]引用]
-
-        参考来源：
-        [1] 标题 - 真实URL
-        ---POST_DIVIDER---
-        第 3 篇
-        $$$TITLE$$$ 文章标题
-        $$$ANGLE$$$ 视角标签
-        $$$IMAGE_KEYWORD$$$ 图片关键词
-        $$$CONTENT$$$
-        [正文，带[1][2]引用]
-
-        参考来源：
-        [1] 标题 - 真实URL
-        ---POST_DIVIDER---
-        第 4 篇
-        $$$TITLE$$$ 文章标题
-        $$$ANGLE$$$ 视角标签
-        $$$IMAGE_KEYWORD$$$ 图片关键词
-        $$$CONTENT$$$
-        [正文，带[1][2]引用]
-
-        参考来源：
-        [1] 标题 - 真实URL
-        ---POST_DIVIDER---
+        主题: "${topic}"
+        要求: "${context}"
+        请立即通过深度思考并分析，按上述 Nutty 深度内容标准，生成 4 篇风格和切入点迥异的推文。
       `;
 
       const text = await callServerApi(systemPrompt, userPrompt);
       const parsed = parseResponse(text);
       setPosts(parsed);
+      
+      if (parsed.length === 0) throw new Error("生成结果异常，请重试。");
     } catch (err: any) {
       alert("生成失败: " + err.message);
     } finally {
@@ -220,15 +194,15 @@ const App = () => {
     if (!customStyle.trim()) return;
     setRewriting(true);
     const targetPost = posts[index];
-    let lengthMode = lengthPreference === 'expand' ? "大幅扩充字数并增加细节" : lengthPreference === 'shorten' ? "极简重写" : "保持原篇幅";
+    let lengthMode = lengthPreference === 'expand' ? "增加更多细节和深度分析" : lengthPreference === 'shorten' ? "极简重构" : "维持原有篇幅";
 
     try {
-      const systemPrompt = `改写专家。严禁使用 * 和 #。严禁修改引用标记 [1][2] 和参考来源中的真实链接。`;
+      const systemPrompt = `改写专家。严禁使用 * 和 #。保持原有的真实链接引用。`;
       const userPrompt = `
         原文章内容: ${targetPost.content}
         改写风格: ${customStyle}
-        篇幅要求: ${lengthMode}
-        请输出完整的标签格式结构，并保留引用标记 [1][2] 以及末尾的真实参考链接，移除所有 * 和 #。
+        改写要求: ${lengthMode}
+        请按 $$$TITLE$$$, $$$ANGLE$$$, $$$IMAGE_KEYWORD$$$, $$$CONTENT$$$ 格式返回。
       `;
 
       const text = await callServerApi(systemPrompt, userPrompt);
@@ -254,7 +228,7 @@ const App = () => {
         </h1>
         <p className="text-slate-500 text-lg flex items-center justify-center gap-2 font-medium">
           <LucideShieldCheck className="w-5 h-5 text-emerald-500" />
-          <span>深度联网搜索 · 素材一键检索 · 纯净排版无乱码</span>
+          <span>DeepSeek-Reasoner 深度思考 · 纯净排版无乱码</span>
         </p>
       </div>
 
@@ -268,7 +242,7 @@ const App = () => {
             type="text"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="如：如何防范快递单诈骗、如何清理手机内存、最新科技趋势..."
+            placeholder="如：如何防范快递单诈骗、手机内存深度清理、科技趋势..."
             className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 text-lg font-medium outline-none transition-all placeholder:text-slate-300"
           />
         </div>
@@ -280,7 +254,7 @@ const App = () => {
           <textarea
             value={context}
             onChange={(e) => setContext(e.target.value)}
-            placeholder="可选：补充特定的要求（如：针对大学生群体、强调隐私保护等）"
+            placeholder="可选：输入特定的背景要求..."
             className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 resize-none h-24 outline-none transition-all placeholder:text-slate-300"
           />
         </div>
@@ -291,7 +265,7 @@ const App = () => {
           className="w-full py-4 rounded-2xl font-bold text-white text-lg bg-gradient-to-r from-indigo-600 to-indigo-500 shadow-xl shadow-indigo-100 flex items-center justify-center gap-2 transition-all transform active:scale-[0.98] disabled:opacity-50"
         >
           {loading ? <LucideLoader2 className="w-6 h-6 animate-spin" /> : <LucideSparkles className="w-6 h-6" />}
-          {loading ? "正在深度联网搜索并撰写四篇文章..." : "一键生成 4 篇深度推文"}
+          {loading ? "DeepSeek 正在深度思考并撰写 4 篇文章..." : "一键生成 4 篇深度推文"}
         </button>
       </div>
 
@@ -302,14 +276,14 @@ const App = () => {
             {/* Image & Stock Links */}
             <div className="relative h-64 bg-slate-100 overflow-hidden">
                <img 
-                 src={`https://image.pollinations.ai/prompt/${encodeURIComponent(post.imageKeyword + " cinematic depth professional photography crisp high-resolution")}?width=800&height=500&nologo=true`} 
+                 src={`https://image.pollinations.ai/prompt/${encodeURIComponent(post.imageKeyword + " cinematic depth professional photography high-resolution")}?width=800&height=500&nologo=true`} 
                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                  alt={post.imageKeyword}
                />
                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-6">
                  <div className="flex flex-col gap-2">
                     <div className="text-white/70 text-[10px] font-mono uppercase tracking-[0.2em] mb-1 flex items-center gap-2">
-                       <LucideImage className="w-3 h-3" /> 素材检索关键词: {post.imageKeyword}
+                       <LucideImage className="w-3 h-3" /> 素材关键词: {post.imageKeyword}
                     </div>
                     <div className="flex gap-2">
                       <a 
@@ -338,7 +312,7 @@ const App = () => {
                </div>
                <div className="absolute top-6 left-6">
                   <span className="bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full text-[10px] font-black text-indigo-600 flex items-center gap-2 shadow-sm">
-                    <LucideCloud className="w-3 h-3" /> 腾讯混元联网引擎
+                    <LucideCloud className="w-3 h-3" /> DeepSeek Reasoner
                   </span>
                </div>
             </div>
@@ -415,7 +389,7 @@ const App = () => {
                     type="text"
                     value={customStyle}
                     onChange={(e) => setCustomStyle(e.target.value)}
-                    placeholder="或自定义文风描述（如：以专家的口吻）..."
+                    placeholder="或输入自定义改写要求..."
                     className="w-full px-4 py-3 bg-white border border-indigo-100 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-400 font-medium"
                   />
 
@@ -425,7 +399,7 @@ const App = () => {
                     className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-xl shadow-indigo-100 flex items-center justify-center gap-2 transform active:scale-95 transition-all"
                   >
                     {rewriting ? <LucideLoader2 className="w-4 h-4 animate-spin" /> : <LucideSparkles className="w-4 h-4" />}
-                    确认并改写此篇文章
+                    确认改写此篇文章
                   </button>
                 </div>
               )}
@@ -435,14 +409,9 @@ const App = () => {
       </div>
 
       <div className="mt-24 border-t border-slate-200 pt-10 text-center">
-        <div className="flex items-center justify-center gap-6 mb-4 grayscale opacity-50">
-           <LucideCloud className="w-5 h-5" />
-           <LucideShieldCheck className="w-5 h-5" />
-           <LucideLink2 className="w-5 h-5" />
-        </div>
-        <p className="text-[10px] text-slate-400 tracking-[0.3em] uppercase mb-1">TrendWeaver Editorial Engine</p>
+        <p className="text-[10px] text-slate-400 tracking-[0.3em] uppercase mb-1 font-bold">TrendWeaver Editorial Engine</p>
         <p className="text-xs text-slate-400 font-medium">
-          联网能力由腾讯混元 Pro 提供 · 三大图库一键检索 · 纯净文本排版
+          DeepSeek-Reasoner 深度思考 · 基于腾讯 Nutty 风格标准 · 一键素材检索
         </p>
       </div>
     </div>
