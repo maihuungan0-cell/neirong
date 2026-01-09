@@ -147,31 +147,25 @@ const App = () => {
     setLoading(true);
     setPosts([]);
     try {
-      const systemPrompt = `你是一名拥有极强深度思考与实时资讯分析能力的资深主编。
+      const systemPrompt = `你是一名拥有极强深度思考与联网分析能力的资深主编。
 你的任务是参考腾讯 Nutty (SSR) 平台内容的编辑逻辑：结构化、逻辑严谨、包含真实参考源。
 
-【核心指令 - 拒绝过时】：
-你必须确保生成的内容具有极高的【时效性】。
-优先检索并分析 2025 年底至 2026 年初的最新动态、数据、政策和趋势。
-严禁使用过时的案例（如 3 年前的老旧段子）、过时的技术参数或已失效的信息。
-每一篇文章必须体现出“当下性”和“前瞻性”。
-
 【生成指标】：
-你必须一次性生成且仅生成 4 篇完全独立的深度推文。严禁只写 1 篇，严禁合并。
+你必须一次性生成且仅生成 4 篇完全独立的深度推文。严禁只写 1 篇，严禁合并。如果文章内容带有时间属性，最好是当下的，不可采用过时内容
 
 【Nutty 深度内容参考模版】：
 每一篇文章必须包含以下结构：
-1. [标题]：直击痛点
-2. [背景摘要]：100字以内的引言，交代最新的社会背景。
-3. [核心要点]：使用 1. 2. 3. 序号，列出当下的最新发现、实操步骤或事实。
-4. [深度分析/对策]：基于最新趋势提供专业建议或避雷指南。
-5. [参考源]：必须包含 [1] 引用标记，并附上 2025-2026 年间的真实有效 URL。
+1. [标题]：直击痛点，如《如何彻底防范...》、《2026年最新趋势...》
+2. [背景摘要]：100字以内的引言。
+3. [核心要点]：使用 1. 2. 3. 序号清晰陈述事实或步骤。
+4. [深度分析/对策]：提供专业建议或避雷指南。
+5. [参考源]：必须包含 [1] 引用标记，并附上真实 URL。
 
 【输出控制】：
 严格重复以下结构 4 次，每篇之间必须用 ---POST_DIVIDER--- 隔开：
 
 $$$TITLE$$$ 文章标题
-$$$ANGLE$$$ 切入视角
+$$$ANGLE$$$ 切入视角（如：防骗视角、技术视角等）
 $$$IMAGE_KEYWORD$$$ 1-2个极其精准的英文名词
 $$$CONTENT$$$ 文章正文内容（禁止使用 * 或 # 符号，保持纯净排版）
 【参考来源】
@@ -181,7 +175,7 @@ $$$CONTENT$$$ 文章正文内容（禁止使用 * 或 # 符号，保持纯净排
       const userPrompt = `
         主题: "${topic}"
         要求: "${context}"
-        请立即调动你的深度推理能力，检索 2024-2025 年的最前沿资讯，生成 4 篇切入点完全不同、具备极强时效性的深度推文。
+        请立即通过深度思考并分析，按上述 Nutty 深度内容标准，生成 4 篇风格和切入点迥异的推文。
       `;
 
       const text = await callServerApi(systemPrompt, userPrompt);
@@ -203,7 +197,7 @@ $$$CONTENT$$$ 文章正文内容（禁止使用 * 或 # 符号，保持纯净排
     let lengthMode = lengthPreference === 'expand' ? "增加更多细节和深度分析" : lengthPreference === 'shorten' ? "极简重构" : "维持原有篇幅";
 
     try {
-      const systemPrompt = `改写专家。严禁使用 * 和 #。保持原有的真实链接引用。确保改写后的内容依然符合 2025 年的时效性特征。`;
+      const systemPrompt = `改写专家。严禁使用 * 和 #。保持原有的真实链接引用。`;
       const userPrompt = `
         原文章内容: ${targetPost.content}
         改写风格: ${customStyle}
@@ -234,7 +228,7 @@ $$$CONTENT$$$ 文章正文内容（禁止使用 * 或 # 符号，保持纯净排
         </h1>
         <p className="text-slate-500 text-lg flex items-center justify-center gap-2 font-medium">
           <LucideShieldCheck className="w-5 h-5 text-emerald-500" />
-          <span>DeepSeek-Reasoner 深度思考 · 2025 实时时效 · 纯净排版</span>
+          <span>DeepSeek-Reasoner 深度思考 · 纯净排版无乱码</span>
         </p>
       </div>
 
@@ -248,7 +242,7 @@ $$$CONTENT$$$ 文章正文内容（禁止使用 * 或 # 符号，保持纯净排
             type="text"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="输入主题，DeepSeek 将为您检索 2025 最新趋势..."
+            placeholder="如：如何防范快递单诈骗、手机内存深度清理、科技趋势..."
             className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 text-lg font-medium outline-none transition-all placeholder:text-slate-300"
           />
         </div>
@@ -271,7 +265,7 @@ $$$CONTENT$$$ 文章正文内容（禁止使用 * 或 # 符号，保持纯净排
           className="w-full py-4 rounded-2xl font-bold text-white text-lg bg-gradient-to-r from-indigo-600 to-indigo-500 shadow-xl shadow-indigo-100 flex items-center justify-center gap-2 transition-all transform active:scale-[0.98] disabled:opacity-50"
         >
           {loading ? <LucideLoader2 className="w-6 h-6 animate-spin" /> : <LucideSparkles className="w-6 h-6" />}
-          {loading ? "DeepSeek 正在捕捉趋势并撰写..." : "生成 4 篇 最新时效推文"}
+          {loading ? "DeepSeek 正在深度思考并撰写 4 篇文章..." : "一键生成 4 篇深度推文"}
         </button>
       </div>
 
@@ -282,7 +276,7 @@ $$$CONTENT$$$ 文章正文内容（禁止使用 * 或 # 符号，保持纯净排
             {/* Image & Stock Links */}
             <div className="relative h-64 bg-slate-100 overflow-hidden">
                <img 
-                 src={`https://image.pollinations.ai/prompt/${encodeURIComponent(post.imageKeyword + " cinematic depth professional photography high-resolution 2025 trend")}?width=800&height=500&nologo=true`} 
+                 src={`https://image.pollinations.ai/prompt/${encodeURIComponent(post.imageKeyword + " cinematic depth professional photography high-resolution")}?width=800&height=500&nologo=true`} 
                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                  alt={post.imageKeyword}
                />
@@ -417,7 +411,7 @@ $$$CONTENT$$$ 文章正文内容（禁止使用 * 或 # 符号，保持纯净排
       <div className="mt-24 border-t border-slate-200 pt-10 text-center">
         <p className="text-[10px] text-slate-400 tracking-[0.3em] uppercase mb-1 font-bold">TrendWeaver Editorial Engine</p>
         <p className="text-xs text-slate-400 font-medium">
-          DeepSeek-Reasoner 深度思考 · 时效增强 · 基于腾讯 Nutty 风格标准
+          DeepSeek-Reasoner 深度思考 · 基于腾讯 Nutty 风格标准 · 一键素材检索
         </p>
       </div>
     </div>
