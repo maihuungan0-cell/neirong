@@ -175,7 +175,7 @@ $$$CONTENT$$$ 文章正文内容（禁止使用 * 或 # 符号，保持纯净排
       const userPrompt = `
         主题: "${topic}"
         要求: "${context}"
-        请立即通过深度思考并分析，按上述 Nutty 深度内容标准，生成 4 篇风格和切入点迥异的推文。
+        请立即通过深度思考并分析，按上述 Nutty 深度内容标准，且去除[标题]、[背景摘要][核心要点][深度分析/对策]字样，生成 4 篇风格和切入点迥异的推文。
       `;
 
       const text = await callServerApi(systemPrompt, userPrompt);
@@ -197,7 +197,7 @@ $$$CONTENT$$$ 文章正文内容（禁止使用 * 或 # 符号，保持纯净排
     let lengthMode = lengthPreference === 'expand' ? "增加更多细节和深度分析" : lengthPreference === 'shorten' ? "极简重构" : "维持原有篇幅";
 
     try {
-      const systemPrompt = `改写专家。严禁使用 * 和 #。保持原有的真实链接引用。`;
+      const systemPrompt = `改写专家。严禁使用 * 和 #。保持原有的真实链接引用。严禁出现 [背景摘要]、[核心要点]、[深度分析/对策] 等标识词字样。`;
       const userPrompt = `
         原文章内容: ${targetPost.content}
         改写风格: ${customStyle}
